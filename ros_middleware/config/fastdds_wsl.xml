@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns="http://www.eprosima.com">
+  <profiles>
+    <!--
+      通用 WSL Fast DDS 配置。不要在这里固定 PC 或树莓派 IP；mirrored
+      networking 直接使用系统可用接口，单播发现地址由 ROS_STATIC_PEERS 设置。
+    -->
+    <participant profile_name="wsl_lan_participant" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <discovery_config>
+            <discoveryProtocol>SIMPLE</discoveryProtocol>
+          </discovery_config>
+        </builtin>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>

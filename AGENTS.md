@@ -2,18 +2,22 @@
 
 ## Project Structure & Module Organization
 
-This workspace contains two cooperating components:
+This workspace contains four cooperating components:
 
 - `small_car_f407/` is the STM32F407 firmware. Application code lives under
   `Core/Modules/<Area>/{Inc,Src}`; CubeMX startup and peripheral code is in
   `Core/Inc` and `Core/Src`. `Drivers/`, `Middlewares/`, and `USB_HOST/` contain
   vendor or generated code. Hardware notes are in `small_car_f407/docs/`.
-- `robot_host/` is the Raspberry Pi/ROS 2 host. ROS packages are under `src/`,
-  standalone diagnostics under `apps/`, deployment files under `ros2/` and
-  `systemd/`, and operational documentation under `docs/`.
+- `robot_host/` is the Raspberry Pi host application. ROS-independent code is
+  under `core/`, ROS business packages and launch files under `ros/`, and
+  operational files under `tools/`, `scripts/`, and `systemd/`.
+- `ros_middleware/` owns shared ROS interfaces, DDS configuration, and the ROS
+  container environment. It must not contain business nodes or launch files.
+- `llm_agent/` owns model serving and Agent behavior and communicates through
+  the interfaces defined by `ros_middleware/`.
 
 Keep protocol changes synchronized between `Core/Modules/Comm` and
-`robot_host/src/small_car_base/protocol`.
+`robot_host/core/small_car_base/protocol`.
 
 ## Build, Test, and Development Commands
 
@@ -35,7 +39,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 For the ROS workspace, source ROS 2 Kilted and run the `colcon` command documented
-in `robot_host/README.md`. Use `docker compose -f ros2/compose.yaml up --build -d`
+in `robot_host/README.md`. Use
+`docker compose -f ros_middleware/docker/compose.yaml up --build -d`
 for the hardware-integrated container.
 
 ## Coding Style & Naming Conventions

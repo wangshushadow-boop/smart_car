@@ -27,7 +27,7 @@ docker compose up --build -d --force-recreate
 
 ```bash
 ssh ubuntu@192.168.3.85
-cd ~/small_car_f407/robot_host/ros2
+cd ~/small_car_f407/ros_middleware/docker
 docker compose ps
 docker compose logs -f small_car_ros2
 ```
@@ -45,7 +45,7 @@ Managed nodes are active
 ```bash
 docker compose exec small_car_ros2 bash
 source /opt/ros/kilted/setup.bash
-source /workspace/robot_host/install-ros/setup.bash
+source /workspace/smart_car/robot_host/install-ros/setup.bash
 ros2 topic echo /wheel/odom_raw --once
 ros2 topic echo /imu/data_raw --once
 ros2 topic echo /odom --once

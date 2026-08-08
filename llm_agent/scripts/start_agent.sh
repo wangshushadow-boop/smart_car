@@ -3,7 +3,7 @@
 set -eo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source /opt/ros/kilted/setup.bash
-source "${root}/robot_host/install-ros/setup.bash"
+source "${root}/llm_agent/install-ros/setup.bash"
 set -u
 export PYTHONPATH="${root}:${PYTHONPATH:-}"
 # 与树莓派容器保持完全相同的 ROS 2 域和 DDS 实现，避免容器重建后

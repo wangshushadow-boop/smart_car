@@ -32,7 +32,7 @@ alias l='ls -CF'
 alias grep='grep --color=auto'
 
 # ROS 2 Kilted 基础环境。树莓派静态地址不在这里硬编码，使用
-# robot_host/scripts/setup_wsl_ros_env.sh 按当前网络设置。
+# llm_agent/scripts/setup_wsl_ros_env.sh 按当前网络设置。
 if [[ -r /opt/ros/kilted/setup.zsh ]]; then
   source /opt/ros/kilted/setup.zsh
   export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"

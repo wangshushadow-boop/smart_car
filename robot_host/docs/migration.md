@@ -4,7 +4,7 @@
 
 | 旧项 | 当前实现 |
 | --- | --- |
-| 旧 ROS 工作区的 `ros2_ws/src` | `robot_host/src` |
+| 旧 ROS 工作区的 `ros2_ws/src` | `robot_host/ros` 与 `ros_middleware/src` |
 | `smallcar_ros_and_mcu_bridge` | `small_car_base` |
 | `small_car_motion_controller` | Nav2 标准 Controller/Behavior |
 | 多个自研 ROS 底盘进程 | 单一 `small_car_base_node` |

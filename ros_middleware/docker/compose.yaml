@@ -1,0 +1,51 @@
+services:
+  small_car_ros2:
+    build:
+      context: ../..
+      dockerfile: ros_middleware/docker/Dockerfile
+    image: small-car-ros2:kilted
+    network_mode: host
+    ipc: host
+    devices:
+      - /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C2C059301-if00:/dev/small_car_mcu
+      - /dev/snd:/dev/snd
+      - /dev/video0:/dev/video0
+    volumes:
+      - ../..:/workspace/smart_car
+      - /home/ubuntu/.hermes:/home/ubuntu/.hermes
+      # Hermes 虚拟环境的 Python 是指向 uv 目录的符号链接，需同时挂载链接目标。
+      - /home/ubuntu/.local/share/uv:/home/ubuntu/.local/share/uv:ro
+    environment:
+      HOME: /home/ubuntu
+      PYTHONUNBUFFERED: "1"
+      # 避免容器以 root 身份在挂载的源码目录生成无法删除的 __pycache__。
+      PYTHONDONTWRITEBYTECODE: "1"
+      ROS_DOMAIN_ID: "0"
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      CAR_VOICE_INPUT_DEVICE: plughw:CARD=USB,DEV=0
+      CAR_VOICE_PLAYBACK_DEVICE: plughw:CARD=USB,DEV=0
+      CAR_VOICE_STT_PROVIDER: sensevoice
+      CAR_VOICE_WAKE_ON_ANY_SPEECH: "false"
+      CAR_VOICE_SENSEVOICE_PYTHON: /home/ubuntu/.hermes/sensevoice-venv/bin/python
+      CAR_VOICE_SENSEVOICE_SCRIPT: /home/ubuntu/.hermes/car_voice/sensevoice_transcribe.py
+      CAR_VOICE_CAMERA_DEVICE: /dev/video0
+      CAR_VOICE_FORWARD_SPEED_MPS: "0.30"
+      CAR_VOICE_REVERSE_SPEED_MPS: "0.25"
+    working_dir: /workspace/smart_car
+    command: >-
+      bash -lc "source /opt/ros/kilted/setup.bash &&
+      colcon --log-base log-ros build
+      --base-paths ros_middleware/src robot_host/ros
+      --build-base robot_host/build-ros
+      --install-base robot_host/install-ros
+      --cmake-clean-cache
+      --symlink-install &&
+      source robot_host/install-ros/setup.bash &&
+      { ros2 launch small_car_av pi_av.launch.py &
+      exec ros2 launch small_car_nav2 system.launch.py; }"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

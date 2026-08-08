@@ -2,7 +2,7 @@
 set -e
 
 # 停止 ROS 容器，释放 MCU 串口。
-cd "$HOME/small_car_f407/robot_host/ros2"
+cd "$HOME/small_car_f407/ros_middleware/docker"
 trap 'docker compose up -d' EXIT
 docker compose down
 

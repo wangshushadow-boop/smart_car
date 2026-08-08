@@ -7,7 +7,7 @@
 
 ```bash
 ssh ubuntu@192.168.3.85
-cd ~/small_car_f407/robot_host/ros2
+cd ~/small_car_f407/ros_middleware/docker
 docker compose ps
 docker compose logs -f small_car_ros2
 docker compose restart small_car_ros2
@@ -24,7 +24,7 @@ docker compose up --build -d --force-recreate
 ```bash
 docker compose exec small_car_ros2 bash
 source /opt/ros/kilted/setup.bash
-source /workspace/robot_host/install-ros/setup.bash
+source /workspace/smart_car/robot_host/install-ros/setup.bash
 ```
 
 容器使用 `ROS_DOMAIN_ID=0` 和 Cyclone DDS；运行检查命令前，应保持该环境一致。
@@ -67,10 +67,10 @@ ros2 topic pub --once /cmd_vel geometry_msgs/msg/TwistStamped \
 
 | 文件 | 内容 |
 | --- | --- |
-| `src/small_car_base/config/chassis.yaml` | 轮距、编码器比例、轮速闭环和安全限制 |
-| `src/small_car_base/config/base.yaml` | 串口、发布频率、坐标系和协方差 |
-| `src/small_car_base/config/ekf.yaml` | 轮速与 IMU 融合 |
-| `src/small_car_nav2/config/nav2.yaml` | Nav2 参数 |
+| `robot_host/ros/small_car_base/config/chassis.yaml` | 轮距、编码器比例、轮速闭环和安全限制 |
+| `robot_host/ros/small_car_base/config/base.yaml` | 串口、发布频率、坐标系和协方差 |
+| `robot_host/ros/small_car_base/config/ekf.yaml` | 轮速与 IMU 融合 |
+| `robot_host/ros/small_car_nav2/config/nav2.yaml` | Nav2 参数 |
 
 在线调整示例：
 

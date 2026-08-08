@@ -1,6 +1,6 @@
 # 模块划分
 
-所有底盘模块位于 `robot_host/src/small_car_base`，头文件、实现和测试按领域放在
+所有底盘核心模块位于 `robot_host/core/small_car_base`，头文件、实现和测试按领域放在
 同一目录。
 
 | 模块 | 单一职责 | 允许依赖 |

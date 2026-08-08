@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-project_dir="/home/ubuntu/small_car_f407/robot_host"
-compose_dir="${project_dir}/ros2"
+workspace_dir="/home/ubuntu/small_car_f407"
+project_dir="${workspace_dir}/robot_host"
+compose_dir="${workspace_dir}/ros_middleware/docker"
 request_file="${project_dir}/runtime/mcu_recovery.request"
 serial_device="/dev/serial/by-id/usb-1a86_USB_Single_Serial_5C2C059301-if00"
 usb_id="1a86:55d4"

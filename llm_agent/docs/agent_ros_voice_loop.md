@@ -16,7 +16,7 @@
 
 - 树莓派和 WSL 能互相访问，且 DDS UDP 没有被防火墙隔离；
 - 两端 `ROS_DOMAIN_ID` 均为 `0`；
-- WSL 已在 `robot_host` 中构建并 source `small_car_interfaces`；
+- WSL 已构建并 source `ros_middleware` 中的 `small_car_interfaces`；
 - 默认模型路径为 `/mnt/d/AI/models/MiniCPM-o-4_5-AWQ`。
 
 ## 树莓派：启动音视频和播放节点
@@ -25,8 +25,8 @@
 
 ```bash
 cd ~/smart_car/robot_host
-docker compose -f ros2/compose.yaml up --build -d
-docker compose -f ros2/compose.yaml logs -f small_car_ros2
+docker compose -f ros_middleware/docker/compose.yaml up --build -d
+docker compose -f ros_middleware/docker/compose.yaml logs -f small_car_ros2
 ```
 
 容器内检查输入 topic：
