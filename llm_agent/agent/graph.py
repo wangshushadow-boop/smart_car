@@ -9,12 +9,13 @@ class AgentState(TypedDict, total=False):
     speech_wav: bytes
     perception: dict
     answer: str
+    answer_wav: bytes
 
 
 def build_graph():
     client = MiniCpmClient()
     graph = StateGraph(AgentState)
-    graph.add_node("ask_minicpm", lambda state: {"answer": client.respond(state)})
+    graph.add_node("ask_minicpm", client.respond)
     graph.add_edge(START, "ask_minicpm")
     graph.add_edge("ask_minicpm", END)
     return graph.compile()

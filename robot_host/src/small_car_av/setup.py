@@ -22,6 +22,7 @@ setup(
     entry_points={
         "console_scripts": [
             "jabra_audio_publisher = small_car_av.jabra_audio_publisher:main",
+            "jabra_audio_player = small_car_av.jabra_audio_player:main",
         ],
     },
 )

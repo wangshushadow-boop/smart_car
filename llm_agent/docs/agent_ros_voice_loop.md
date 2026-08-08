@@ -1,82 +1,100 @@
-# Agent 语音对话链路
+# Agent 音视频语音闭环
 
-本文记录已验证的本地闭环：树莓派音频与图像经 ROS 2 触发 Agent，Agent 调用 WSL 中的
-MiniCPM-o 4.5，并在终端打印文本回复。
+完整链路如下：树莓派采集 Jabra 麦克风和摄像头，ROS 2 把音视频发送到 WSL；Agent 在语音结束时
+调用 MiniCPM-o 4.5 Omni，并把生成的原生语音回传到树莓派播放。
 
 ```text
-Jabra 麦克风、摄像头（树莓派）
+树莓派 Jabra 麦克风、摄像头
   → /car/audio/input、/car/camera/image/compressed
-  → llm_agent/input：缓存与 VAD
-  → llm_agent：LangGraph
-  → MiniCPM-o API（127.0.0.1:8000）
-  → Agent 终端输出 MiniCPM-o 回复
+  → WSL VAD 与 Agent
+  → MiniCPM-o Omni（127.0.0.1:8099）
+  → /car/audio/output
+  → 树莓派 Jabra 扬声器
 ```
 
 ## 运行前条件
 
-- 树莓派 ROS 容器正在发布相机和 Jabra 麦克风 topic。
-- WSL 已在 `robot_host` 中构建 `small_car_interfaces`。
-- 本地模型路径为 `/opt/models/MiniCPM-o-4_5-AWQ`。
-- 三个终端使用相同的 `MINICPM_API_KEY`；密钥不要写入仓库或文档。
+- 树莓派和 WSL 能互相访问，且 DDS UDP 没有被防火墙隔离；
+- 两端 `ROS_DOMAIN_ID` 均为 `0`；
+- WSL 已在 `robot_host` 中构建并 source `small_car_interfaces`；
+- 默认模型路径为 `/mnt/d/AI/models/MiniCPM-o-4_5-AWQ`。
 
-## 终端 1：启动 MiniCPM-o
+## 树莓派：启动音视频和播放节点
 
-```zsh
-cd /mnt/d/work/smart_car/llm_agent
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
-export NO_PROXY='127.0.0.1,localhost'
-export no_proxy='127.0.0.1,localhost'
-export MINICPM_API_KEY='<与模型服务相同的密钥>'
-./scripts/start_minicpm.sh
+仓库容器会通过 `pi_av.launch.py` 同时启动摄像头、麦克风发布节点和扬声器播放节点：
+
+```bash
+cd ~/smart_car/robot_host
+docker compose -f ros2/compose.yaml up --build -d
+docker compose -f ros2/compose.yaml logs -f small_car_ros2
 ```
 
-保持该终端打开。出现 `Application startup complete` 表示服务可用。
+容器内检查输入 topic：
 
-另开终端检查：
-
-```zsh
-cd /mnt/d/work/smart_car/llm_agent
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
-export NO_PROXY='127.0.0.1,localhost'
-export no_proxy='127.0.0.1,localhost'
-export MINICPM_API_KEY='<与模型服务相同的密钥>'
-./scripts/status_minicpm.sh
+```bash
+ros2 topic hz /car/audio/input
+ros2 topic hz /car/camera/image/compressed
 ```
 
-正常时会输出 `minicpm-o-4.5-awq` 的模型列表。
-
-## 终端 2：启动 Agent
+## WSL 终端 1：启动 Omni
 
 ```zsh
 cd /mnt/d/work/smart_car/llm_agent
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
-export NO_PROXY='127.0.0.1,localhost'
-export no_proxy='127.0.0.1,localhost'
-export MINICPM_API_KEY='<与模型服务相同的密钥>'
+./scripts/start_minicpm_omni.sh
+```
+
+保持终端打开。另开终端检查服务：
+
+```zsh
+curl --noproxy '*' -fsS http://127.0.0.1:8099/health
+curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
+```
+
+## WSL 终端 2：启动 Agent
+
+```zsh
+cd /mnt/d/work/smart_car/llm_agent
 ./scripts/start_agent.sh
 ```
 
-出现以下日志表示 Agent 已开始等待语音：
+看到下面日志后，对麦克风说话并保持约一秒静音：
 
 ```text
-Agent 已启动，直接订阅树莓派音视频 topic
+Agent 已启动：订阅树莓派音视频，并回传模型语音
 ```
 
-对 Jabra 麦克风说话，例如“hi 小车”，说完后保持约 1 秒静音。VAD 默认在至少 300 ms
-语音、随后 600 ms 静音时触发。成功后终端会输出：
+Agent 会打印文本回复，随后树莓派的 Jabra 扬声器播放模型语音。播放期间 Agent 会暂停接收麦克风，
+并在结束后额外等待 500 ms，以降低扬声器回声再次触发 VAD 的概率。
 
-```text
-MiniCPM-o：……
+## 逐段验证
+
+WSL 应发现树莓派输入：
+
+```zsh
+ros2 topic list | grep '^/car/'
+ros2 topic hz /car/audio/input
+```
+
+模型回答时，树莓派应收到输出：
+
+```bash
+ros2 topic hz /car/audio/output
+```
+
+单独验证树莓派声卡：
+
+```bash
+aplay -D plughw:CARD=USB,DEV=0 /usr/share/sounds/alsa/Front_Center.wav
 ```
 
 ## 常见问题
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| `status_minicpm.sh` 返回 502 | WSL 代理拦截了 `127.0.0.1`，执行上述 `unset ...proxy` 和 `NO_PROXY` 设置后重试。 |
-| `The URL must be either a HTTP, data or file URL` | Agent 版本过旧；当前版本会使用 `file://` 格式的临时 WAV。重启 Agent。 |
-| `Cannot load local files without --allowed-local-media-path` | 模型服务版本过旧；当前 `start_minicpm.sh` 已放行受限目录 `/tmp`。停止并重新启动模型服务。 |
-| Agent 一直等待语音 | 确认树莓派正在发布 `/car/audio/input` 和 `/car/camera/image/compressed`；可在 WSL 执行 `ros2 topic hz /car/audio/input` 检查。 |
-| VAD 没有触发或触发过多 | 调整 ROS 节点参数 `vad_energy_threshold`、`vad_min_speech_ms` 和 `vad_silence_ms`。 |
+| `curl` 返回 502 | 代理拦截了本机地址；保留 `--noproxy '*'`。 |
+| Agent 一直等待语音 | 在两端检查 `/car/audio/input`；确认 `ROS_DOMAIN_ID=0` 并放行 DDS UDP。 |
+| 有文本但没有声音 | 在树莓派检查 `/car/audio/output`，再用上述 `aplay` 命令验证声卡名称。 |
+| VAD 不触发或误触发 | 调整 `vad_energy_threshold`、`vad_min_speech_ms` 和 `vad_silence_ms`。 |
+| 模型请求返回 502 | 更新 Agent 后重启；客户端会强制绕过 WSL HTTP 代理。 |
 
-模型仅允许读取 `/tmp` 下由 Agent 创建的单次临时音频文件；文件在请求结束后删除。
+输入 WAV 以内嵌 data URL 发送，不会在磁盘上留下临时音频文件。

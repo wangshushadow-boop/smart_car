@@ -56,5 +56,12 @@ def generate_launch_description() -> LaunchDescription:
                 ],
                 output="screen",
             ),
+            Node(
+                package="small_car_av",
+                executable="jabra_audio_player",
+                name="car_jabra_audio_player",
+                parameters=[{"alsa_device": "plughw:CARD=USB,DEV=0"}],
+                output="screen",
+            ),
         ]
     )

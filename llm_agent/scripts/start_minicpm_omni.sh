@@ -41,5 +41,6 @@ exec "${OMNI_BIN}" serve "${MODEL_DIR}" \
   --omni \
   --deploy-config "${DEPLOY_CONFIG}" \
   --trust-remote-code \
+  --allowed-local-media-path /tmp \
   --host 0.0.0.0 \
   --port 8099
