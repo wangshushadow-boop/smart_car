@@ -1,43 +1,49 @@
-# 树莓派端架构
+# 架构与模块
 
-## 运行进程
-
-`system.launch.py` 通过 `base.launch.py` 复用底盘启动逻辑，完整系统包含：
-
-1. `small_car_base_node`：独占 MCU 串口，发布原始传感器并执行最终安全限制。
-2. `ekf_filter_node`：融合轮速与 IMU Z 轴角速度，发布 `/odom` 和动态 TF。
-3. `robot_state_publisher`：读取 URDF，发布固定 TF。
-4. `nav2_container`：承载 Nav2 Planner、Controller、Behavior 和安全组件。
-
-底盘、EKF 和机器人模型均为独立节点，不在 `nav2_container` 内重复创建。
-
-## 控制链
+## 边界
 
 ```text
-Nav2 Controller
-  -> Velocity Smoother
-  -> Collision Monitor
-  -> /cmd_vel
-  -> small_car_base_node
-  -> MCU
+ROS topic / parameter
+        │
+robot_host/ros                 ROS 适配与进程启动
+        │ C++ API
+robot_host/core                可独立测试的上位机业务库
+        │ USART3 二进制协议
+small_car_f407                 实时控制与传感器采集
+
+ros_middleware                公共 msg 和 ROS 2 容器环境
 ```
 
-`/cmd_vel` 是唯一速度入口。Nav2 负责规划、平滑和环境碰撞监控；底盘节点仍执行硬限幅、时间戳检查、命令超时和串口故障停车。
+- `robot_host` 拥有上位机业务、ROS 节点、launch 和机器人参数。
+- `ros_middleware` 只提供公共接口包与运行环境，不放机器人业务节点。
+- 模块之间通过 ROS 串联；树莓派与 MCU 直接使用串口，不增加 IPC 或桥接进程。
 
-## 状态估计链
+## 核心模块
 
-```text
-MCU 累计编码器 -> /wheel/odom_raw --+
-                                      +-> robot_localization -> /odom
-MCU 原始 IMU ----> /imu/data_raw -----+                       -> odom -> base_link
-```
+| 目录 | 职责 |
+| --- | --- |
+| `core/small_car_base/transport` | 串口打开、读写和恢复 |
+| `core/small_car_base/protocol` | 帧、CRC、编解码和流解析 |
+| `core/small_car_base/mcu` | 面向业务的 MCU 客户端 |
+| `core/small_car_base/control` | 速度限幅、超时停车等安全逻辑 |
+| `core/small_car_base/chassis` | YAML 参数加载、下发和回读校验 |
+| `core/small_car_base/servo` | 云台角度与脉宽换算 |
+| `core/small_car_base/audio` | ALSA 采集与播放能力 |
 
-MCU 不计算位姿。底盘节点完成编码器运动学换算和 IMU SI 单位转换，`robot_localization` 负责融合。接入 SLAM 或 AMCL 后，由定位模块补充 `map -> odom`。
+## ROS 包
 
-## 设计约束
+| 包 | 作用 |
+| --- | --- |
+| `small_car_base` | 串口底盘节点、里程计、IMU、超声、诊断和 EKF |
+| `small_car_av` | 摄像头、压缩图像、音频输入与播放 |
+| `small_car_description` | URDF、TF、RViz 配置 |
+| `small_car_nav2` | Nav2 启动和参数 |
+| `small_car_interfaces` | 公共 `AudioFrame`、`SpeechEvent` 消息；位于 `ros_middleware/src` |
 
-- `protocol` 不访问串口，`transport` 不理解协议。
-- `mcu` 组合协议与传输，但不创建 ROS 接口。
-- `control`、`servo` 使用 SI 单位且不依赖 ROS。
-- 只有 `ros` 层转换 ROS 消息并调度其他模块。
-- 同一时间只能有一个进程占用 MCU 串口。
+## 运行链路
+
+控制链路：`Nav2/Agent -> /cmd_vel -> small_car_base -> USART3 -> MCU`。
+
+状态链路：`MCU -> USART3 -> /wheel/odom_raw + /imu/data_raw -> EKF -> /odom`。
+
+音视频链路：设备由 `small_car_av` 直接访问并发布 ROS topic；音频底层复用 `core/audio`，没有重复的设备实现。

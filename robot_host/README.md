@@ -1,32 +1,53 @@
-# 树莓派上位机
+# robot_host
 
-`robot_host` 是完整的上位机工程：它包含不依赖 ROS 的硬件核心、上位机 ROS 业务节点、系统启动文件以及部署和运维工具。
+树莓派上位机工程。业务能力放在 `core/`，ROS 2 适配、启动和参数放在 `ros/`；公共消息定义和容器环境位于仓库根目录的 `ros_middleware/`。
 
 ## 目录
 
-| 路径 | 内容 |
-| --- | --- |
-| `core/small_car_base` | MCU 协议、串口、底盘安全、参数、舵机和流式 ALSA 音频等纯 C++ 实现 |
-| `ros/small_car_base` | MCU 硬件节点、EKF、参数和基础启动入口 |
-| `ros/small_car_av` | 摄像头节点及复用核心 ALSA 库的 Jabra C++ 音频节点 |
-| `ros/small_car_description` | URDF、RViz 和固定 TF |
-| `ros/small_car_nav2` | Nav2 参数与整机启动入口 |
-| `scripts`、`tools`、`systemd` | 标定、OTA、恢复和部署工具 |
-
-共享 ROS 消息、DDS 配置和容器环境位于相邻的 `ros_middleware` 工程。上位机节点直接调用 `core` 并访问串口，不经过 IPC 或额外桥接进程。
-
-## 构建核心模块
-
-```bash
-cmake -S robot_host -B robot_host/build-host
-cmake --build robot_host/build-host
-ctest --test-dir robot_host/build-host --output-on-failure
+```text
+robot_host/
+├── core/small_car_base/     # 与 ROS 无关的串口、协议、底盘、舵机和音频库
+├── ros/                     # ROS 节点、launch、参数、URDF 和 Nav2
+├── scripts/                 # 部署、标定和固件升级脚本
+├── tools/                   # MCU OTA、USB 恢复及语音工具
+├── systemd/                 # MCU USB 自动恢复服务
+└── docs/                    # 操作文档
 ```
 
-## 启动完整 ROS 系统
+## 常用操作
+
+本机编译和测试核心库：
 
 ```bash
-docker compose -f ros_middleware/docker/compose.yaml up --build -d
+cd robot_host
+cmake -S . -B build-host
+cmake --build build-host -j
+ctest --test-dir build-host --output-on-failure
 ```
 
-容器同时构建 `ros_middleware/src` 和 `robot_host/ros`，随后启动 `small_car_av` 与 `small_car_nav2/system.launch.py`。
+Windows 一键刷新树莓派环境：
+
+```powershell
+.\robot_host\scripts\sync_ros2_host.ps1
+```
+
+树莓派查看状态：
+
+```bash
+cd ~/small_car_f407/ros_middleware/docker
+docker compose ps
+docker compose logs -f --tail=100
+```
+
+## 文档导航
+
+- [架构与模块](docs/architecture.md)：模块边界和数据链路
+- [开发与测试](docs/development.md)：构建、测试和新增模块
+- [部署与运维](docs/deployment.md)：树莓派刷新、启动、检查和故障处理
+- [ROS 接口](docs/interfaces.md)：topic、消息、坐标系和参数
+- [串口协议](docs/protocol.md)：完整帧格式、消息、参数和 OTA 子协议
+- [底盘标定](docs/calibration.md)：标定顺序和脚本
+- [固件升级](docs/firmware-update.md)：首次烧录和日常 OTA
+- [导航操作](docs/navigation.md)：Nav2 启动、验证和当前限制
+
+文档只描述当前有效方案；历史迁移过程以 Git 记录为准。

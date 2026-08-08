@@ -73,6 +73,6 @@ ROS / Python 代码遵循各包内的 `setup.py` 与 PEP 8 默认。
 - Commit 主题使用简短中文祈使句（如 `优化底盘yaml参数`），每个 commit 只对应一个特性或修复，并在主题中点出模块或硬件接口。
 - PR 需说明行为变更、验证命令与硬件测试、关联 issue，并显式标注 `.ioc`、协议、引脚、参数或 launch 文件的变更。
 - 不提交构建产物、固件二进制、地图、日志或本地 IDE 配置（见 `.gitignore`）。
-- 硬件原理图和接线长期资料放在 `small_car_f407/docs/` 或 `robot_host/hardware.md`。
+- 硬件原理图和接线长期资料放在 `small_car_f407/docs/`；树莓派设备操作放在 `robot_host/docs/deployment.md`。
 - 修改 `small_car_f407.ioc` 后 CubeMX 会重新生成文件，自定义代码必须留在 `USER CODE BEGIN/END` 区块内，应用模块放在 `small_car_f407/Core/Modules/` 下，不受 CubeMX 管理。
 - WSL 模型密钥、Agent 本地 `.env` 等敏感信息不得进入仓库；本地 `.env` 应加入 `.gitignore`。
