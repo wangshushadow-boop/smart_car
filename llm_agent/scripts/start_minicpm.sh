@@ -7,7 +7,7 @@ set -euo pipefail
 
 SERVICE_DIR="/opt/minicpm-service"
 VLLM_BIN="${SERVICE_DIR}/venv/bin/vllm"
-MODEL_DIR="/opt/models/MiniCPM-o-4_5-AWQ"
+MODEL_DIR="/mnt/d/AI/models/MiniCPM-o-4_5-AWQ"
 LOG_DIR="${SERVICE_DIR}/logs"
 
 if [[ -z "${MINICPM_API_KEY:-}" ]]; then

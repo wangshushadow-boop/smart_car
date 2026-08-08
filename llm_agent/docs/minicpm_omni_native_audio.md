@@ -1,50 +1,103 @@
-# MiniCPM-o 原生语音输出
+# MiniCPM-o AWQ 原生语音服务
 
-普通 `start_minicpm.sh` 使用 vLLM Chat Completions，只输出文本。原生语音使用独立的
-vLLM-Omni 服务，响应同时包含文本和 24 kHz 单声道 WAV（`message.audio.data` Base64）。
+当前方案在 RTX 3090 24GB 上运行 `MiniCPM-o-4_5-AWQ`，由 vLLM-Omni 的三个阶段完成
+多模态理解、语音编码和 24 kHz 波形生成。
 
-## 安装
+## 环境与模型
+
+```text
+复用虚拟环境：/opt/minicpm-service/venv
+AWQ 模型：    /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
+服务地址：    http://127.0.0.1:8099
+语音 WebSocket：ws://127.0.0.1:8099/v1/audio/speech/stream
+3090 配置：   llm_agent/config/minicpmo_4_5_awq_3090.yaml
+```
+
+脚本直接调用虚拟环境中的程序，正常启动不需要手工激活。需要手动执行 `python`、`pip`、
+`vllm-omni` 或排查依赖时，可以复用同一环境：
+
+```zsh
+source /opt/minicpm-service/venv/bin/activate
+```
+
+不要同时运行 8000 端口的普通 vLLM；RTX 3090 无法让两个服务同时驻留。
+
+## 国内下载源优先
+
+Python 包优先使用清华 PyPI：
+
+```zsh
+/opt/minicpm-service/venv/bin/pip install \
+  --index-url https://pypi.tuna.tsinghua.edu.cn/simple 包名
+```
+
+Hugging Face 模型优先设置国内端点并关闭 Xet：
+
+```zsh
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HUB_DISABLE_XET=1
+```
+
+只有国内镜像不存在所需包或版本时，再临时回退官方源，不要把外部源设为默认值。
+
+当前环境的 CUDA 头文件为 13.0。FlashInfer 本地编译要求编译组件保持同一版本，已验证的版本为：
+
+```zsh
+/opt/minicpm-service/venv/bin/pip install \
+  --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+  nvidia-cuda-nvcc==13.0.88 \
+  nvidia-cuda-crt==13.0.88 \
+  nvidia-cuda-cccl==13.0.85 \
+  nvidia-nvvm==13.0.88
+```
+
+不要单独升级这些包，否则可能出现 CUDA 头文件不兼容或 PTX 版本不匹配。
+
+## 启动与检查
+
+进入 WSL 后运行：
 
 ```zsh
 cd /mnt/d/work/smart_car/llm_agent
-chmod +x scripts/install_minicpm_omni.sh scripts/start_minicpm_omni.sh
-./scripts/install_minicpm_omni.sh
-```
-
-安装会创建 `/opt/minicpm-omni/venv`，并下载完整模型到 `/opt/models/MiniCPM-o-4_5`。
-不要使用当前 AWQ 目录替代完整 Omni 模型。
-安装脚本以 `.omni_download_complete` 为下载完成标志；目录存在或已有 `config.json` 但文件不完整时会自动继续下载。
-
-`vllm-omni` 还需要同版本的基础 `vllm` 运行时；安装脚本固定安装二者的 `0.26.0` 版本。
-
-如果曾用旧脚本安装，需删除旧的 Omni 虚拟环境后重新执行安装，以消除它与 ROS/colcon
-系统包之间的 `setuptools` 冲突：
-
-```zsh
-sudo rm -rf /opt/minicpm-omni/venv
-./scripts/install_minicpm_omni.sh
-```
-
-默认使用清华 PyPI 与 `hf-mirror.com`。需要改用其他镜像时可在安装前设置：
-
-```zsh
-export PIP_INDEX_URL='https://你的-PyPI-镜像/simple'
-export HF_ENDPOINT='https://你的-HuggingFace-镜像'
-```
-
-脚本默认设置 `HF_HUB_DISABLE_XET=1`，避免 Xet CAS 下载绕过国内镜像并出现 401；
-中断后的下载会继续复用已完成分片。脚本默认下载超时为 600 秒，并在中断时最多自动重试 5 次。
-
-## 启动
-
-先停止普通 8000 端口 vLLM，然后运行：
-
-```zsh
 ./scripts/start_minicpm_omni.sh
 ```
 
-Omni 使用端口 `8099`。请求需要指定 `modalities: ["text", "audio"]` 和
-`chat_template_kwargs.use_tts_template: true`；返回的 `message.audio.data` 即可解码为 WAV。
+首次启动需要编译 CUDA 内核，后续会复用缓存。看到 `Application startup complete` 表示三个阶段
+都已完成加载。保持该终端运行，在另一个 WSL 终端检查：
 
-单张 RTX 3090 使用官方单卡配置，不能和普通 vLLM 并行运行。后续 Agent 将该 WAV 发布到
-`/car/audio/output`，树莓派播放节点再输出到 Jabra。
+```zsh
+curl --noproxy '*' -fsS http://127.0.0.1:8099/health
+curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
+```
+
+必须为本机请求绕过 HTTP 代理，否则代理可能返回 502，并不代表模型服务异常。
+
+## 生成测试语音
+
+```zsh
+/opt/minicpm-service/venv/bin/python scripts/test_minicpm_omni_audio.py
+```
+
+默认生成：
+
+```text
+/tmp/minicpm_omni_test.wav
+```
+
+可以用环境变量修改文本和输出路径：
+
+```zsh
+MINICPM_OMNI_TEST_TEXT='小车语音测试' \
+MINICPM_OMNI_TEST_WAV=/tmp/car_test.wav \
+/opt/minicpm-service/venv/bin/python scripts/test_minicpm_omni_audio.py
+```
+
+测试脚本通过 WebSocket 接收模型原生 WAV。Agent 后续将得到的 WAV 发布到树莓派音频输出 topic，
+由 `robot_host` 的播放节点输出到 Jabra。
+
+## 已验证结果
+
+- AWQ 权重由 AutoAWQ Marlin 内核加载；
+- Stage 0、Stage 1、Stage 2 均能在 RTX 3090 24GB 上驻留；
+- 完成一次语音生成后的显存占用约 23.9GB，3090 基本满载，不能再并行启动其他 GPU 模型；
+- 已实际生成 24 kHz WAV，测试文件约 3.94MB。
