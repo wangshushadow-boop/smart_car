@@ -15,7 +15,7 @@ input：VAD、回声抑制、感知聚合
 app：进程装配与生命周期
     ↓
 agent：LangGraph 决策编排
-    ├──→ models：MiniCPM-o 与响应解析
+    ├──→ models：本地/云端生成、原生语音、能力与 provider 注册
     ├──→ tools：白名单、参数校验、超时与结果
     └──→ adapters/audio：Piper TTS
     ↓
@@ -36,7 +36,7 @@ ROS 音频输出
 | --- | --- |
 | `app/` | 创建运行时和 ROS 输入节点，处理启动与退出 |
 | `agent/` | 标准事件、共享状态、LangGraph、节点和提示词加载 |
-| `models/` | 统一模型接口、MiniCPM-o 实现及输出解析 |
+| `models/` | 统一生成/语音接口、能力声明、provider 注册、MiniCPM 与 MiniMax 实现 |
 | `tools/` | 工具协议、执行上下文、注册表和车辆只读工具 |
 | `adapters/audio/` | TTS 协议和 Piper 实现 |
 | `input/` | ROS 音视频订阅、VAD、回声抑制、语音聚合与播放发布 |
@@ -73,14 +73,17 @@ understand_intent
 
 ## 模型与语音
 
-MiniCPM-o 通过本机 OpenAI 兼容端点访问：
+推理和语音是两个独立选择：
 
 ```text
-http://127.0.0.1:8099/v1
+GenerationBackend.complete(ModelRequest) -> ModelResponse
+SpeechBackend.synthesize(SpeechRequest) -> SpeechResponse
 ```
 
-普通请求先进行一次结构化意图识别，再进行一次最终回复生成。最终文本经过清洗后交给 Piper TTS。
-TTS 失败只影响语音，不会丢失已经生成的文本回复。
+MiniCPM-o 支持本机图像、音频、文本输入和 Omni 原生语音；MiniMax 文本走云端 OpenAI 兼容接口，
+MiniMax 语音走独立 T2A API；Piper 是模型无关的本地后端。`auto` 可组合原生语音与 Piper 回退。
+最终文本先经过清洗，再发送给语音 provider，因此播报内容与用户可见答案一致。语音失败只影响播报，
+不会丢失文本回复。详细配置与能力矩阵见[模型 Provider](model_providers.md)。
 
 ## 当前能力和后续阶段
 

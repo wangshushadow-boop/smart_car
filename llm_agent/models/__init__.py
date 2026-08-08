@@ -1,6 +1,17 @@
-"""Model backends used by the Agent."""
+"""Provider-independent generation and speech contracts."""
 
-from .protocol import ModelBackend
-from .types import ModelRequest, ModelResponse
+from .capabilities import GenerationCapabilities, SpeechCapabilities
+from .protocol import GenerationBackend, ModelBackend, SpeechBackend
+from .types import ModelRequest, ModelResponse, SpeechRequest, SpeechResponse
 
-__all__ = ["ModelBackend", "ModelRequest", "ModelResponse"]
+__all__ = [
+    "GenerationBackend",
+    "GenerationCapabilities",
+    "ModelBackend",
+    "ModelRequest",
+    "ModelResponse",
+    "SpeechBackend",
+    "SpeechCapabilities",
+    "SpeechRequest",
+    "SpeechResponse",
+]

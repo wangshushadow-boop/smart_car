@@ -35,4 +35,6 @@ class AgentState(TypedDict, total=False):
     tool_result: object
     answer: str
     answer_wav: bytes
+    generation_backend: str
+    speech_backend: str
     error: str

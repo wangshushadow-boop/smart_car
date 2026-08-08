@@ -1,8 +1,8 @@
 # MiniCPM-o AWQ 原生语音服务
 
-> 说明：本服务能够生成原生语音，但当前 Agent 不播放 completion 中的原生 WAV。模型响应中的文本与
-> 原生音频尚未建立可靠的最终答案关联，因此 Agent 只采用清洗后的最终文本，并交给独立 Piper TTS
-> 合成播报音频。本文保留原生语音服务的部署和独立验证方法。
+> 说明：Agent 不直接采用 completion 中可能属于不同 choice 的音频，而是把清洗后的最终文本发送给
+> Omni 原生语音端点。这样可以保证文本与播报一致。`speech.provider=minicpm` 强制使用原生语音；
+> 默认 `auto` 在原生语音失败时回退 Piper。
 
 当前方案在 RTX 3090 24GB 上运行 `MiniCPM-o-4_5-AWQ`，由 vLLM-Omni 的三个阶段完成
 多模态理解、语音编码和 24 kHz 波形生成。
@@ -78,9 +78,9 @@ curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
 
 ## Agent 在线语音
 
-仓库当前没有独立的原生 WAV 测试客户端。上述 `/health` 和 `/v1/models` 用于验证服务，实际在线链路
-由 Agent 调用文本 completion，再使用 Piper 生成 WAV。Piper WAV 会发布到树莓派音频输出 topic，
-由 `robot_host` 的播放节点输出到 Jabra。
+仓库当前没有独立的原生 WAV 测试客户端。上述 `/health` 和 `/v1/models` 用于验证服务。在线链路会
+把最终文本发送到 `ws://127.0.0.1:8099/v1/audio/speech/stream`，校验返回的 16-bit PCM WAV，再发布
+到树莓派音频输出 topic。若配置为 `auto`，连接、超时或 WAV 校验失败会回退 Piper。
 
 ## 已验证结果
 

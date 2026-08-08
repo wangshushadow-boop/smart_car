@@ -4,7 +4,7 @@ import unittest
 
 from llm_agent.agent.events import TextReceived
 from llm_agent.agent.graph import build_graph
-from llm_agent.models.types import ModelResponse
+from llm_agent.models.types import ModelResponse, SpeechResponse
 from llm_agent.tools.registry import ToolRegistry
 from llm_agent.tools.vehicle.status import RobotStatus
 
@@ -23,9 +23,16 @@ class FakeTts:
     def __init__(self) -> None:
         self.texts = []
 
-    def synthesize(self, text: str) -> bytes:
-        self.texts.append(text)
-        return b"RIFF-fake"
+    provider_name = "fake"
+
+    def synthesize(self, request) -> SpeechResponse:
+        self.texts.append(request.text)
+        return SpeechResponse(
+            audio_wav=b"RIFF-fake",
+            provider=self.provider_name,
+            sample_rate=16_000,
+            channels=1,
+        )
 
 
 class FakeStatusProvider:

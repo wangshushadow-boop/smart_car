@@ -133,6 +133,25 @@ API Key: EMPTY
 Agent 通过 `127.0.0.1` 访问服务，但启动脚本当前使用 `0.0.0.0:8099` 监听且未启用 API 鉴权。
 只应在受信任网络使用，并通过 Windows/WSL 防火墙限制 8099 端口，不要暴露到公网。
 
+推理模型和语音后端在 `config/agent.yaml` 中独立选择：
+
+```yaml
+generation:
+  provider: minicpm       # minicpm | minimax
+
+speech:
+  provider: auto          # auto | native | same_provider | piper | minicpm | minimax
+  preferred: same_provider
+  fallback: piper
+```
+
+`auto` 优先使用推理 provider 的原生语音，创建失败或合成失败时回退 Piper；显式指定 provider 时不会
+静默回退。可用 `CAR_GENERATION_PROVIDER`、`CAR_SPEECH_PROVIDER` 临时覆盖选择。MiniMax 云端能力需要：
+
+```bash
+export MINIMAX_API_KEY='请替换为云端密钥'
+```
+
 当前 Agent 已按以下边界组织：
 
 ```text
@@ -159,5 +178,5 @@ llm_agent/
 车辆移动、导航和任意 ROS topic 发布均未开放。
 
 已验证的语音对话启动、检查和排错步骤见[Agent 语音对话链路](docs/agent_ros_voice_loop.md)。
-内部设计见[Agent 架构](docs/architecture.md)、[状态与事件](docs/agent_state.md)和
-[工具契约](docs/tool_contract.md)。
+内部设计见[Agent 架构](docs/architecture.md)、[模型 Provider](docs/model_providers.md)、
+[状态与事件](docs/agent_state.md)和[工具契约](docs/tool_contract.md)。

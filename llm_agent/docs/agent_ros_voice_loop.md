@@ -1,14 +1,16 @@
 # Agent 音视频语音闭环
 
 完整链路如下：树莓派采集 Jabra 麦克风和摄像头，ROS 2 把音视频发送到 WSL；Agent 在语音结束时
-调用 MiniCPM-o 4.5 Omni 完成意图识别和回复生成，再由 Piper 合成语音并回传树莓派播放。
+调用配置的 generation provider 完成意图识别和回复生成，再由配置的 speech provider 合成语音并
+回传树莓派播放。默认是 MiniCPM-o 推理，优先 MiniCPM 原生语音，失败时回退 Piper。
 
 ```text
 树莓派 Jabra 麦克风、摄像头
   → /car/audio/input、/car/camera/image/compressed
   → WSL VAD、回声抑制与 SpeechFinished 事件
   → LangGraph：意图识别 → 白名单工具（可选）→ 回复
-  → MiniCPM-o Omni（127.0.0.1:8099）+ Piper TTS
+  → Generation provider（MiniCPM 或 MiniMax）
+  → Speech provider（MiniCPM、MiniMax 或 Piper）
   → /car/audio/output
   → 树莓派 Jabra 扬声器
 ```
@@ -64,11 +66,11 @@ cd /mnt/d/work/smart_car/llm_agent
 Agent 已启动：订阅树莓派音视频，并回传模型语音
 ```
 
-Agent 会打印文本回复，随后树莓派的 Jabra 扬声器播放 Piper 合成的语音。播放期间麦克风采集保持
+Agent 会打印文本回复，随后树莓派的 Jabra 扬声器播放选定 provider 合成的语音。播放期间麦克风采集保持
 开启，参考信号消除器会抑制扬声器回声；检测到独立的人声时会发布停止播放事件，实现 barge-in。
 播放正常结束后保留约 500 ms 的回声尾音保护。
 
-一轮普通问答目前包含两次模型调用：第一次只输出结构化意图，第二次生成面向用户的回复。
+一轮普通问答目前包含两次 generation 调用：第一次只输出结构化意图，第二次生成面向用户的回复。
 状态查询还会在两次调用之间经过工具白名单检查。当前 `get_robot_status` 尚未接入 ROS 状态网关，
 因此会如实返回不可用；动作请求会直接回复“尚未开放”，不会下发底盘控制。
 

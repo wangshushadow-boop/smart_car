@@ -20,3 +20,19 @@ class ModelResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str
+    provider: str = "unknown"
+
+
+class SpeechRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=10_000)
+
+
+class SpeechResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    audio_wav: bytes = Field(min_length=1)
+    provider: str
+    sample_rate: int = Field(gt=0)
+    channels: int = Field(ge=1, le=8)

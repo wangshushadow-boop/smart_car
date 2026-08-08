@@ -6,7 +6,7 @@ from threading import Event
 
 from langgraph.graph import END, START, StateGraph
 
-from llm_agent.adapters.audio.tts import PiperTts, SpeechSynthesizer
+from llm_agent.adapters.audio.tts import PiperSpeech, SpeechSynthesizer
 from llm_agent.models.minicpm import MiniCpmModel
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.tools.registry import ToolRegistry
@@ -32,7 +32,7 @@ def build_graph(
     cancelled: Event | None = None,
 ):
     model = model or MiniCpmModel()
-    tts = tts or PiperTts()
+    tts = tts or PiperSpeech()
     prompts = prompts or load_prompts()
     cancelled = cancelled or Event()
     if registry is None:

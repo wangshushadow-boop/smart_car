@@ -13,11 +13,12 @@
 
 其他边界：
 
-- `llm_agent/models` 封装 MiniCPM-o 和模型输出解析；
+- `llm_agent/models` 封装本地/云端推理、原生语音、能力声明和 provider 选择；
 - `llm_agent/tools` 定义强类型白名单工具；
 - `llm_agent/adapters/audio` 封装独立 TTS；
 - `llm_agent/input` 继续负责 ROS 音视频聚合、VAD 和回声抑制，后续再渐进拆分。
 
 当前仅开放只读的 `get_robot_status` 工具。在 ROS 状态网关实现前，它会明确返回不可用；车辆动作工具尚未开放。
-详细设计见[Agent 架构](../docs/architecture.md)、[状态与事件](../docs/agent_state.md)和
-[工具契约](../docs/tool_contract.md)；完整运行步骤见[语音对话链路](../docs/agent_ros_voice_loop.md)。
+详细设计见[Agent 架构](../docs/architecture.md)、[模型 Provider](../docs/model_providers.md)、
+[状态与事件](../docs/agent_state.md)和[工具契约](../docs/tool_contract.md)；完整运行步骤见
+[语音对话链路](../docs/agent_ros_voice_loop.md)。

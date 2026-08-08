@@ -7,7 +7,7 @@ from llm_agent.agent.prompt_loader import PromptSet
 from llm_agent.agent.state import IntentType
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.models.response_parser import sanitize_spoken_answer
-from llm_agent.models.types import ModelRequest
+from llm_agent.models.types import ModelRequest, SpeechRequest
 
 from .common import event_inputs
 
@@ -46,7 +46,7 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
             answer = sanitize_spoken_answer(response.text)
             if not answer:
                 answer = "抱歉，我暂时无法给出有效回答。"
-            return {"answer": answer}
+            return {"answer": answer, "generation_backend": response.provider}
         except Exception as error:
             return {
                 "answer": "模型暂时无法响应，请稍后再试。",
@@ -62,7 +62,11 @@ def create_speech_node(tts: SpeechSynthesizer):
         if not answer:
             return {}
         try:
-            return {"answer_wav": tts.synthesize(answer)}
+            response = tts.synthesize(SpeechRequest(text=answer))
+            return {
+                "answer_wav": response.audio_wav,
+                "speech_backend": response.provider,
+            }
         except Exception as error:
             # Text remains usable even if the independent speech backend fails.
             return {"error": f"语音合成失败：{error}"}
