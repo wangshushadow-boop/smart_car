@@ -6,7 +6,7 @@ small_car_base:
     # MCU 串口波特率，必须与 STM32 USART3 配置保持一致。
     baud_rate: 115200
 
-    # 最后一次有效 /cmd_vel 到达后允许继续执行的最长时间，单位 ms；
+    # 最后一次有效速度命令到达后允许继续执行的最长时间，单位 ms；
     # 超时后节点主动向 MCU 发送停车命令。
     cmd_vel_timeout_ms: 500
 
@@ -21,7 +21,7 @@ small_car_base:
     # 未融合轮式里程计使用的父坐标系名称。
     odom_frame: odom
 
-    # 机器人底盘主体坐标系名称，也是 /wheel/odom_raw 的 child_frame_id。
+    # 机器人底盘主体坐标系名称，也是未融合轮式里程计的 child_frame_id。
     base_frame: base_link
 
     # sensor_msgs/Imu 消息使用的安装坐标系名称，需与 URDF 一致。
@@ -30,7 +30,7 @@ small_car_base:
     # sensor_msgs/Range 消息使用的超声波安装坐标系名称，需与 URDF 一致。
     ultrasonic_frame: ultrasonic_link
 
-    # 是否发布四轮和上下云台的 /joint_states；RViz 显示机器人模型时需要开启。
+    # 是否发布四轮和上下云台关节状态；RViz 显示机器人模型时需要开启。
     publish_joint_states: true
 
     # 车轮物理半径，单位 m；用于把编码器位移换算为关节角度。
@@ -45,16 +45,16 @@ small_car_base:
     # 超声波水平视场角，单位 rad；写入 sensor_msgs/Range.field_of_view。
     ultrasonic_field_of_view_rad: 0.52
 
-    # /wheel/odom_raw 中线速度协方差，单位 (m/s)²。
+    # 未融合轮式里程计中线速度协方差，单位 (m/s)²。
     odom_linear_velocity_variance: 0.04
 
-    # /wheel/odom_raw 中角速度协方差，单位 (rad/s)²。
+    # 未融合轮式里程计中角速度协方差，单位 (rad/s)²。
     odom_angular_velocity_variance: 0.05
 
-    # /imu/data_raw 中三轴线加速度协方差，单位 (m/s²)²；取两轮静止采样的保守值。
+    # IMU 三轴线加速度协方差，单位 (m/s²)²；取两轮静止采样的保守值。
     imu_acceleration_variance: 0.018
 
-    # /imu/data_raw 中三轴角速度协方差，单位 (rad/s)²；包含静止 Z 轴偏差。
+    # IMU 三轴角速度协方差，单位 (rad/s)²；包含静止 Z 轴偏差。
     imu_angular_velocity_variance: 0.003
 
     # 上云台关节处于 0 rad 时的舵机中心脉宽，单位 us。

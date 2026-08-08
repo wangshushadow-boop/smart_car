@@ -20,9 +20,13 @@ class JabraAudioPlayer : public rclcpp::Node {
   JabraAudioPlayer() : Node("small_car_jabra_audio_player") {
     device_ = declare_parameter<std::string>(
         "alsa_device", "plughw:CARD=USB,DEV=0");
+    topic_ = declare_parameter<std::string>("output_topic", "");
+    if (topic_.empty()) {
+      throw std::invalid_argument("output_topic must be provided by the interface contract");
+    }
     auto qos = rclcpp::QoS(rclcpp::KeepLast(100)).reliable();
     subscription_ = create_subscription<small_car_interfaces::msg::AudioFrame>(
-        "/car/audio/output", qos,
+        topic_, qos,
         std::bind(&JabraAudioPlayer::Play, this, std::placeholders::_1));
     RCLCPP_INFO(get_logger(), "waiting for audio output on ALSA %s",
                 device_.c_str());
@@ -80,6 +84,7 @@ class JabraAudioPlayer : public rclcpp::Node {
   }
 
   std::string device_;
+  std::string topic_;
   std::uint32_t active_sample_rate_ = 0;
   std::uint8_t active_channels_ = 0;
   std::unique_ptr<small_car::AudioPlayback> playback_;

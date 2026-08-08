@@ -19,6 +19,10 @@ class JabraAudioPublisher : public rclcpp::Node {
   JabraAudioPublisher() : Node("small_car_jabra_audio_publisher") {
     config_.device = declare_parameter<std::string>(
         "alsa_device", "plughw:CARD=USB,DEV=0");
+    topic_ = declare_parameter<std::string>("input_topic", "");
+    if (topic_.empty()) {
+      throw std::invalid_argument("input_topic must be provided by the interface contract");
+    }
     config_.sample_rate = static_cast<std::uint32_t>(
         declare_parameter<int>("sample_rate", 16000));
     config_.channels = static_cast<std::uint32_t>(
@@ -33,7 +37,7 @@ class JabraAudioPublisher : public rclcpp::Node {
     samples_.resize(static_cast<std::size_t>(config_.period_frames) *
                     config_.channels);
     publisher_ = create_publisher<small_car_interfaces::msg::AudioFrame>(
-        "/car/audio/input", rclcpp::SensorDataQoS());
+        topic_, rclcpp::SensorDataQoS());
     timer_ = create_wall_timer(std::chrono::milliseconds(1),
                                std::bind(&JabraAudioPublisher::Capture, this));
     RCLCPP_INFO(get_logger(),
@@ -72,6 +76,7 @@ class JabraAudioPublisher : public rclcpp::Node {
   }
 
   small_car::AudioConfig config_;
+  std::string topic_;
   std::unique_ptr<small_car::AudioCapture> capture_;
   std::vector<small_car::PcmSample> samples_;
   rclcpp::Publisher<small_car_interfaces::msg::AudioFrame>::SharedPtr publisher_;

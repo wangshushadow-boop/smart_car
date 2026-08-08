@@ -13,7 +13,7 @@ ekf_filter_node:
     world_frame: odom
 
     # 轮式里程计只提供底盘坐标系下的前向、侧向约束和旋转速度。
-    odom0: /wheel/odom_raw
+    odom0: ""
     odom0_config: [
       false, false, false,
       false, false, false,
@@ -26,7 +26,7 @@ ekf_filter_node:
     odom0_relative: false
 
     # 原始 IMU 当前不提供 orientation，第一阶段只融合 Z 轴角速度。
-    imu0: /imu/data_raw
+    imu0: ""
     imu0_config: [
       false, false, false,
       false, false, false,

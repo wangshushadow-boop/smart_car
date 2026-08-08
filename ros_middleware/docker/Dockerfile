@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libportaudio2 \
       mpg123 \
       python3-numpy \
+      python3-yaml \
       python3-colcon-common-extensions \
       python3-pip \
       ros-kilted-ament-index-python \

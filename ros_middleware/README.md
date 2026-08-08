@@ -4,7 +4,7 @@
 
 ## 目录
 
-- `src/small_car_interfaces`：共享的 `.msg`、`.srv` 和 `.action` 定义。
+- `src/small_car_interfaces`：共享的 `.msg`、`.srv`、`.action` 和 `config/interfaces.yaml` 接口契约。
 - `config`：DDS 等公共通信配置。
 - `docker`：ROS 2 构建与运行环境。
 - `docs`：Topic、Service、Action 和 QoS 契约。

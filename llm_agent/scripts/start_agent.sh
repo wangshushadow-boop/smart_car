@@ -15,4 +15,6 @@ export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 export NO_PROXY="127.0.0.1,localhost"
 export no_proxy="127.0.0.1,localhost"
-exec /opt/minicpm-service/venv/bin/python -m llm_agent.agent.run_agent
+agent_python="/opt/minicpm-service/venv/bin/python"
+"${agent_python}" -c 'import yaml; from ament_index_python.packages import get_package_share_directory'
+exec "${agent_python}" -m llm_agent.agent.run_agent

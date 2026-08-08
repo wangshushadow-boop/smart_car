@@ -1,0 +1,203 @@
+# 小车跨工程 ROS 接口契约（唯一事实源）。
+#
+# 本文件随 small_car_interfaces 包安装。robot_host 的 launch、llm_agent 和
+# 维护脚本都从已安装包读取它，运行代码不得再次写入跨模块 topic 名。
+#
+# 修改规则：
+# 1. 保持 key 稳定；代码通过 key 查找，而不是直接写 topic 名。
+# 2. 修改 name、type、qos 或消息语义前，必须同步修改发布者、订阅者和文档，
+#    并重建树莓派与 WSL 的 ROS 工作区。
+# 3. 优先新增 key；已有 topic 的类型或单位发生不兼容变化时，新增版本化 key，
+#    不直接复用旧 key。
+# 4. publisher/subscribers 是所有权说明，不由 ROS 运行时校验。
+#
+# 顶层字段：
+# - version：契约格式版本；解析器可据此拒绝不兼容的文件。
+# - topics：接口键到契约条目的映射。
+#
+# 每个条目字段：
+# - name：ROS 根命名空间下的绝对 topic 名。
+# - type：ROS 接口类型。自定义类型仅允许来自 small_car_interfaces。
+# - qos：约定的 QoS 预设；sensor_data = SensorDataQoS（低延迟、可丢帧），
+#   reliable = Reliable + KeepLast(100)，default = ROS 默认可靠 QoS。
+# - publisher/subscribers：逻辑发布者和订阅者，用于明确模块边界。
+# - rate_hz：预期发布频率；timeout_ms：消费者允许的最大命令新鲜度。
+
+version: 1
+
+topics:
+  # Nav2 碰撞监控最终输出的底盘速度命令。
+  # TwistStamped.twist.linear.x 单位为 m/s，twist.angular.z 单位为 rad/s；
+  # small_car_base 超过 timeout_ms 未收到有效时间戳命令时主动停车。
+  cmd_vel:
+    name: /cmd_vel
+    type: geometry_msgs/msg/TwistStamped
+    qos: default
+    publisher: nav2/collision_monitor
+    subscribers: [robot_host/small_car_base]
+    timeout_ms: 500
+
+  # 外部云台控制命令。JointTrajectory 中的 joint_names 必须与 URDF 云台关节名
+  # 对应；small_car_base 负责将目标角度换算为 MCU 舵机脉宽。
+  servo_trajectory:
+    name: /servo_controller/joint_trajectory
+    type: trajectory_msgs/msg/JointTrajectory
+    qos: default
+    subscribers: [robot_host/small_car_base]
+
+  # MCU 编码器累计计数换算得到的未融合轮式里程计。
+  # header.frame_id 为 odom，child_frame_id 为 base_link；供 EKF 作为 odom0 输入。
+  wheel_odom_raw:
+    name: /wheel/odom_raw
+    type: nav_msgs/msg/Odometry
+    qos: default
+    publisher: robot_host/small_car_base
+
+  # MCU ICM20948 原始读数经上位机单位换算后的 IMU 数据。
+  # 线加速度单位 m/s²，角速度单位 rad/s；供 EKF 作为 imu0 输入。
+  imu_data_raw:
+    name: /imu/data_raw
+    type: sensor_msgs/msg/Imu
+    qos: sensor_data
+    publisher: robot_host/small_car_base
+
+  # 车头超声距离。Range.range 单位为 m；无有效距离时由节点按 Range 语义处理。
+  # Nav2 局部/全局代价地图和 collision_monitor 都使用该输入。
+  ultrasonic_front:
+    name: /ultrasonic/front
+    type: sensor_msgs/msg/Range
+    qos: sensor_data
+    publisher: robot_host/small_car_base
+
+  # 四轮和双云台的关节位置/速度，用于 robot_state_publisher、RViz 和标定脚本。
+  joint_states:
+    name: /joint_states
+    type: sensor_msgs/msg/JointState
+    qos: default
+    publisher: robot_host/small_car_base
+
+  # 串口、MCU、超声和 IMU 的健康状态。诊断脚本从此读取控制器状态与故障原因。
+  diagnostics:
+    name: /diagnostics
+    type: diagnostic_msgs/msg/DiagnosticArray
+    qos: default
+    publisher: robot_host/small_car_base
+
+  # robot_localization EKF 融合轮式里程计和 IMU 后的标准里程计输出。
+  # 当前只提供 odom -> base_link；尚未接入 map -> odom 定位链路。
+  odom:
+    name: /odom
+    type: nav_msgs/msg/Odometry
+    qos: default
+    publisher: robot_localization/ekf_node
+
+  # robot_localization 的固定内部输出名。base.launch 将它重映射到 odom，
+  # 因而其他模块不得订阅本 topic；保留条目仅用于避免 launch 中出现硬编码。
+  ekf_filtered_output:
+    name: /odometry/filtered
+    type: nav_msgs/msg/Odometry
+    qos: default
+    publisher: robot_localization/ekf_node
+
+  # 导航客户端或联调脚本注入 Nav2 速度平滑器前的速度命令。
+  # 仅用于 Nav2 链路测试；正常导航由 Nav2 controller 发布其内部速度命令。
+  cmd_vel_nav:
+    name: /cmd_vel_nav
+    type: geometry_msgs/msg/TwistStamped
+    qos: default
+    publisher: navigation_client
+    subscribers: [nav2/velocity_smoother]
+
+  # Nav2 velocity_smoother 平滑后的速度，作为 collision_monitor 的输入。
+  cmd_vel_smoothed:
+    name: /cmd_vel_smoothed
+    type: geometry_msgs/msg/TwistStamped
+    qos: default
+    publisher: nav2/velocity_smoother
+    subscribers: [nav2/collision_monitor]
+
+  # Nav2 collision_monitor 的运行状态，用于监控或调试，不参与底盘控制闭环。
+  nav_collision_state:
+    name: /collision_monitor_state
+    type: nav2_msgs/msg/CollisionMonitorState
+    qos: default
+    publisher: nav2/collision_monitor
+
+  # Nav2 局部代价地图原始栅格，供行为树和 docking_server 查询。
+  nav_local_costmap:
+    name: /local_costmap/costmap_raw
+    type: nav_msgs/msg/OccupancyGrid
+    qos: default
+    publisher: nav2/local_costmap
+
+  # Nav2 全局代价地图原始栅格。当前无地图定位时仍以 odom 为全局参考。
+  nav_global_costmap:
+    name: /global_costmap/costmap_raw
+    type: nav_msgs/msg/OccupancyGrid
+    qos: default
+    publisher: nav2/global_costmap
+
+  # 局部代价地图发布的机器人足迹多边形。
+  nav_local_footprint:
+    name: /local_costmap/published_footprint
+    type: geometry_msgs/msg/PolygonStamped
+    qos: default
+    publisher: nav2/local_costmap
+
+  # 全局代价地图发布的机器人足迹多边形。
+  nav_global_footprint:
+    name: /global_costmap/published_footprint
+    type: geometry_msgs/msg/PolygonStamped
+    qos: default
+    publisher: nav2/global_costmap
+
+  # collision_monitor 前向停车区域的可视化多边形，仅用于调试显示。
+  nav_front_stop_polygon:
+    name: /debug/nav2/front_stop_polygon
+    type: geometry_msgs/msg/PolygonStamped
+    qos: default
+    publisher: nav2/collision_monitor
+
+  # Jabra 麦克风采集的 PCM 输入。AudioFrame 使用 pcm_s16le、16 kHz、单声道，
+  # 每帧 320 个采样（20 ms）；允许丢帧以降低端到端语音延迟。
+  audio_input:
+    name: /car/audio/input
+    type: small_car_interfaces/msg/AudioFrame
+    qos: sensor_data
+    publisher: robot_host/small_car_av
+    subscribers: [llm_agent]
+    rate_hz: 50
+
+  # Agent 合成后下发到 Jabra 扬声器的 PCM 数据。
+  # 使用可靠 QoS，避免语音帧静默丢失；数据长度必须为
+  # frame_samples × channels × 2 字节。
+  audio_output:
+    name: /car/audio/output
+    type: small_car_interfaces/msg/AudioFrame
+    qos: reliable
+    publisher: llm_agent
+    subscribers: [robot_host/small_car_av]
+
+  # USB 摄像头的原始 RGB8 图像。该 topic 主要供树莓派侧图像转换使用，
+  # 跨机器消费者应订阅压缩图像而不是原始图像。
+  camera_image_raw:
+    name: /car/camera/image_raw
+    type: sensor_msgs/msg/Image
+    qos: sensor_data
+    publisher: robot_host/small_car_av
+
+  # 与原始图像同步的相机内参和畸变模型。当前由 v4l2_camera 发布。
+  camera_info:
+    name: /car/camera/camera_info
+    type: sensor_msgs/msg/CameraInfo
+    qos: sensor_data
+    publisher: robot_host/small_car_av
+
+  # JPEG 压缩图像，供 WSL Agent 缓存最近画面并随语音输入送入模型。
+  # 压缩质量由 small_car_av launch 控制；允许丢帧以避免网络回压。
+  camera_image_compressed:
+    name: /car/camera/image/compressed
+    type: sensor_msgs/msg/CompressedImage
+    qos: sensor_data
+    publisher: robot_host/small_car_av
+    subscribers: [llm_agent]

@@ -1,10 +1,37 @@
 """树莓派真实摄像头和 Jabra 麦克风 ROS 2 发布链路。"""
 
+import os
+
+import yaml
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
 
+def _load_topics() -> dict[str, str]:
+    interface_share = get_package_share_directory("small_car_interfaces")
+    contract_path = os.path.join(interface_share, "config", "interfaces.yaml")
+    with open(contract_path, encoding="utf-8") as contract_file:
+        contract = yaml.safe_load(contract_file)
+    topics = contract.get("topics", {}) if isinstance(contract, dict) else {}
+    required = (
+        "audio_input",
+        "audio_output",
+        "camera_image_raw",
+        "camera_info",
+        "camera_image_compressed",
+    )
+    result = {}
+    for key in required:
+        value = topics.get(key, {}).get("name")
+        if not isinstance(value, str) or not value.startswith("/"):
+            raise RuntimeError(f"invalid ROS interface topic: {key}")
+        result[key] = value
+    return result
+
+
 def generate_launch_description() -> LaunchDescription:
+    topics = _load_topics()
     return LaunchDescription(
         [
             Node(
@@ -21,8 +48,8 @@ def generate_launch_description() -> LaunchDescription:
                     }
                 ],
                 remappings=[
-                    ("image_raw", "/car/camera/image_raw"),
-                    ("camera_info", "/car/camera/camera_info"),
+                    ("image_raw", topics["camera_image_raw"]),
+                    ("camera_info", topics["camera_info"]),
                 ],
                 output="screen",
             ),
@@ -39,8 +66,8 @@ def generate_launch_description() -> LaunchDescription:
                     }
                 ],
                 remappings=[
-                    ("in", "/car/camera/image_raw"),
-                    ("out/compressed", "/car/camera/image/compressed"),
+                    ("in", topics["camera_image_raw"]),
+                    ("out/compressed", topics["camera_image_compressed"]),
                 ],
                 output="screen",
             ),
@@ -51,6 +78,7 @@ def generate_launch_description() -> LaunchDescription:
                 parameters=[
                     {
                         "alsa_device": "plughw:CARD=USB,DEV=0",
+                        "input_topic": topics["audio_input"],
                     }
                 ],
                 output="screen",
@@ -59,7 +87,12 @@ def generate_launch_description() -> LaunchDescription:
                 package="small_car_av",
                 executable="jabra_audio_player",
                 name="car_jabra_audio_player",
-                parameters=[{"alsa_device": "plughw:CARD=USB,DEV=0"}],
+                parameters=[
+                    {
+                        "alsa_device": "plughw:CARD=USB,DEV=0",
+                        "output_topic": topics["audio_output"],
+                    }
+                ],
                 output="screen",
             ),
         ]

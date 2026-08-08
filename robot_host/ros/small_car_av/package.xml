@@ -13,8 +13,10 @@
   <depend>small_car_interfaces</depend>
 
   <exec_depend>image_transport</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>v4l2_camera</exec_depend>
 

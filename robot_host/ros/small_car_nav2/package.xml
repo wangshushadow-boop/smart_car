@@ -12,8 +12,11 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_common</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>small_car_base</exec_depend>
+  <exec_depend>small_car_interfaces</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

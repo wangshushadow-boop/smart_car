@@ -13,15 +13,18 @@ from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import GetParameters, SetParameters
 from sensor_msgs.msg import JointState
 
+from interface_contract import load_topics
+
 
 class WheelPwmCalibration:
     def __init__(self) -> None:
         self.node = rclpy.create_node("wheel_pwm_calibration")
+        topics = load_topics("cmd_vel", "joint_states")
         self.publisher = self.node.create_publisher(
-            TwistStamped, "/cmd_vel", 10
+            TwistStamped, topics["cmd_vel"], 10
         )
         self.node.create_subscription(
-            JointState, "/joint_states", self._on_joint_state, 20
+            JointState, topics["joint_states"], self._on_joint_state, 20
         )
         self.set_client = self.node.create_client(
             SetParameters, "/small_car_base/set_parameters"
@@ -171,7 +174,7 @@ def main() -> int:
         print(f"原 wheel_pwm_min={original_pwm}", flush=True)
         calibration.manage_nav(1)
         nav_paused = True
-        print("Nav2 已暂停，标定节点独占 /cmd_vel", flush=True)
+        print("Nav2 已暂停，标定节点独占速度命令接口", flush=True)
         # 先用零速度完成 DDS 匹配，避免把首次发现耗时计入电机起转时间。
         calibration.publish_for(0.0, 4.0)
         forward = calibration.search(1.0, 550, 1000)

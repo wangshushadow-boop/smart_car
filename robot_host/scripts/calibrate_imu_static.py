@@ -9,10 +9,13 @@ import rclpy
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
 
+from interface_contract import load_topics
+
 
 def main() -> int:
     rclpy.init()
     node = rclpy.create_node("imu_static_calibration")
+    topics = load_topics("imu_data_raw")
     samples: list[tuple[float, float, float, float, float, float]] = []
 
     def callback(message: Imu) -> None:
@@ -27,9 +30,7 @@ def main() -> int:
             )
         )
 
-    node.create_subscription(
-        Imu, "/imu/data_raw", callback, qos_profile_sensor_data
-    )
+    node.create_subscription(Imu, topics["imu_data_raw"], callback, qos_profile_sensor_data)
     end = time.monotonic() + 20.0
     while rclpy.ok() and time.monotonic() < end:
         rclpy.spin_once(node, timeout_sec=0.1)

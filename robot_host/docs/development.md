@@ -31,7 +31,7 @@ source robot_host/install-ros/setup.bash
 ## 变更规则
 
 - 串口协议同时修改 `robot_host/core/small_car_base/protocol`、`small_car_f407/Core/Modules/Comm` 和 [协议文档](protocol.md)。
-- 公共 ROS 消息只放在 `ros_middleware/src/small_car_interfaces`。
+- 公共 ROS 消息和跨模块 topic 契约只放在 `ros_middleware/src/small_car_interfaces`；先修改 `config/interfaces.yaml`，再修改节点实现。
 - 机器人节点、launch 和参数只放在 `robot_host/ros`。
 - 标定结果写回 YAML，不依赖临时 `ros2 param set`。
 - 提交前至少运行核心 CTest；协议改动还要构建固件 Debug 版本。

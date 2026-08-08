@@ -60,12 +60,14 @@ source "${ros_setup}"
 set -u
 
 if [[ "${build_workspace}" == true ]]; then
+  # 删除接口定义时，CMake 的缓存不会自动清理旧 rosidl 生成文件。
+  # 这三个目录均由本脚本独占，重建前清理才能保证安装空间与源码一致。
+  rm -rf -- "${agent_dir}/build-ros" "${agent_dir}/install-ros" "${agent_dir}/log-ros"
   cd "${workspace_root}"
   colcon --log-base "${agent_dir}/log-ros" build \
     --base-paths "${workspace_root}/ros_middleware/src" \
     --build-base "${agent_dir}/build-ros" \
     --install-base "${agent_dir}/install-ros" \
-    --cmake-clean-cache \
     --symlink-install
 fi
 
@@ -91,7 +93,7 @@ fi
 timeout 5 ros2 daemon stop >/dev/null 2>&1 || true
 timeout 10 ros2 daemon start >/dev/null 2>&1 || true
 
-python3 -c "from small_car_interfaces.msg import AudioFrame"
+python3 -c "import yaml; from small_car_interfaces.msg import AudioFrame"
 ros2 pkg prefix small_car_interfaces >/dev/null
 
 echo "WSL ROS 2 environment refreshed"

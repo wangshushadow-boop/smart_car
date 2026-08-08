@@ -111,6 +111,13 @@ class SmallCarBaseNode : public rclcpp::Node {
     declare_parameter<std::string>(
         "mcu_recovery_request",
         "/workspace/smart_car/robot_host/runtime/mcu_recovery.request");
+    declare_parameter<std::string>("cmd_vel_topic", "");
+    declare_parameter<std::string>("servo_trajectory_topic", "");
+    declare_parameter<std::string>("wheel_odom_raw_topic", "");
+    declare_parameter<std::string>("imu_data_raw_topic", "");
+    declare_parameter<std::string>("ultrasonic_front_topic", "");
+    declare_parameter<std::string>("joint_states_topic", "");
+    declare_parameter<std::string>("diagnostics_topic", "");
     declare_parameter<std::string>("odom_frame", "odom");
     declare_parameter<std::string>("base_frame", "base_link");
     declare_parameter<std::string>("imu_frame", "imu_link");
@@ -178,6 +185,13 @@ class SmallCarBaseNode : public rclcpp::Node {
         std::chrono::milliseconds(get_parameter("cmd_vel_timeout_ms").as_int());
     command_rate_hz_ = get_parameter("command_rate_hz").as_double();
     mcu_recovery_request_ = get_parameter("mcu_recovery_request").as_string();
+    cmd_vel_topic_ = get_parameter("cmd_vel_topic").as_string();
+    servo_trajectory_topic_ = get_parameter("servo_trajectory_topic").as_string();
+    wheel_odom_raw_topic_ = get_parameter("wheel_odom_raw_topic").as_string();
+    imu_data_raw_topic_ = get_parameter("imu_data_raw_topic").as_string();
+    ultrasonic_front_topic_ = get_parameter("ultrasonic_front_topic").as_string();
+    joint_states_topic_ = get_parameter("joint_states_topic").as_string();
+    diagnostics_topic_ = get_parameter("diagnostics_topic").as_string();
     odom_frame_ = get_parameter("odom_frame").as_string();
     base_frame_ = get_parameter("base_frame").as_string();
     imu_frame_ = get_parameter("imu_frame").as_string();
@@ -199,7 +213,11 @@ class SmallCarBaseNode : public rclcpp::Node {
 
     if (max_linear_speed_mps_ <= 0.0 || max_angular_speed_rad_s_ <= 0.0 ||
         command_rate_hz_ <= 0.0 || wheel_radius_m_ <= 0.0 ||
-        millimeters_per_tick_ <= 0.0 || wheel_track_m_ <= 0.0) {
+        millimeters_per_tick_ <= 0.0 || wheel_track_m_ <= 0.0 ||
+        cmd_vel_topic_.empty() || servo_trajectory_topic_.empty() ||
+        wheel_odom_raw_topic_.empty() || imu_data_raw_topic_.empty() ||
+        ultrasonic_front_topic_.empty() || joint_states_topic_.empty() ||
+        diagnostics_topic_.empty()) {
       throw std::runtime_error("ROS2 bridge contains a non-positive scale parameter");
     }
   }
@@ -273,24 +291,22 @@ class SmallCarBaseNode : public rclcpp::Node {
    * 下行速度或心跳，两者分开避免传感器处理拖慢安全停车。
    */
   void CreateRosInterfaces() {
-    wheel_odom_pub_ =
-        create_publisher<nav_msgs::msg::Odometry>("wheel/odom_raw", 10);
+    wheel_odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(wheel_odom_raw_topic_, 10);
     imu_raw_pub_ = create_publisher<sensor_msgs::msg::Imu>(
-        "imu/data_raw", rclcpp::SensorDataQoS());
+        imu_data_raw_topic_, rclcpp::SensorDataQoS());
     range_pub_ = create_publisher<sensor_msgs::msg::Range>(
-        "ultrasonic/front", rclcpp::SensorDataQoS());
+        ultrasonic_front_topic_, rclcpp::SensorDataQoS());
     if (publish_joint_states_) {
       joint_pub_ =
-          create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+          create_publisher<sensor_msgs::msg::JointState>(joint_states_topic_, 10);
     }
-    diagnostics_pub_ =
-        create_publisher<diagnostic_msgs::msg::DiagnosticArray>("diagnostics", 10);
+    diagnostics_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(diagnostics_topic_, 10);
 
     cmd_vel_sub_ = create_subscription<geometry_msgs::msg::TwistStamped>(
-        "cmd_vel", 10,
+        cmd_vel_topic_, 10,
         std::bind(&SmallCarBaseNode::OnCmdVel, this, std::placeholders::_1));
     servo_sub_ = create_subscription<trajectory_msgs::msg::JointTrajectory>(
-        "servo_controller/joint_trajectory", 10,
+        servo_trajectory_topic_, 10,
         std::bind(&SmallCarBaseNode::OnServoTrajectory, this,
                   std::placeholders::_1));
     parameter_callback_handle_ = add_on_set_parameters_callback(
@@ -322,7 +338,7 @@ class SmallCarBaseNode : public rclcpp::Node {
     if (stamp.nanoseconds() == 0 || age_s < -0.1 ||
         age_s > std::chrono::duration<double>(cmd_vel_timeout_).count()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                           "rejected stale or invalid /cmd_vel");
+                           "rejected stale or invalid velocity command");
       return;
     }
 
@@ -749,6 +765,13 @@ class SmallCarBaseNode : public rclcpp::Node {
   std::string base_frame_;
   std::string imu_frame_;
   std::string ultrasonic_frame_;
+  std::string cmd_vel_topic_;
+  std::string servo_trajectory_topic_;
+  std::string wheel_odom_raw_topic_;
+  std::string imu_data_raw_topic_;
+  std::string ultrasonic_front_topic_;
+  std::string joint_states_topic_;
+  std::string diagnostics_topic_;
   int baud_rate_ = 115200;
 
   // ROS SI 单位与 MCU 整数协议之间的限幅、尺寸和测距参数。

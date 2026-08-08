@@ -1,6 +1,8 @@
 # ROS 接口
 
-所有接口默认位于根命名空间。控制消息使用 ROS 标准消息，音频消息定义在 `ros_middleware/src/small_car_interfaces`。
+所有接口默认位于根命名空间。实际 topic 名、类型和 QoS 以
+`ros_middleware/src/small_car_interfaces/config/interfaces.yaml` 为准；节点和
+Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 
 ## Topic
 

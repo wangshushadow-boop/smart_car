@@ -10,6 +10,8 @@ from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import JointState
 
+from interface_contract import load_topics
+
 
 def median_or_none(values: list[float]) -> float | None:
     return statistics.median(values) if values else None
@@ -27,8 +29,15 @@ def main() -> int:
 
     rclpy.init()
     node = rclpy.create_node("velocity_chain_trace")
+    topics = load_topics(
+        "cmd_vel",
+        "cmd_vel_nav",
+        "cmd_vel_smoothed",
+        "diagnostics",
+        "joint_states",
+    )
     # 与 Nav2 Velocity Smoother 的 KEEP_LAST(1) 输入保持完全一致。
-    publisher = node.create_publisher(TwistStamped, "/cmd_vel_nav", 1)
+    publisher = node.create_publisher(TwistStamped, topics["cmd_vel_nav"], 1)
     smoothed_linear: list[float] = []
     smoothed_angular: list[float] = []
     output_linear: list[float] = []
@@ -45,8 +54,10 @@ def main() -> int:
         output_linear.append(message.twist.linear.x)
         output_angular.append(message.twist.angular.z)
 
-    node.create_subscription(TwistStamped, "/cmd_vel_smoothed", on_smoothed, 20)
-    node.create_subscription(TwistStamped, "/cmd_vel", on_output, 20)
+    node.create_subscription(
+        TwistStamped, topics["cmd_vel_smoothed"], on_smoothed, 20
+    )
+    node.create_subscription(TwistStamped, topics["cmd_vel"], on_output, 20)
 
     def on_joint_state(message: JointState) -> None:
         if len(message.velocity) >= 4:
@@ -59,15 +70,15 @@ def main() -> int:
                 controller_values.clear()
                 controller_values.update({item.key: item.value for item in status.values})
 
-    node.create_subscription(JointState, "/joint_states", on_joint_state, 20)
-    node.create_subscription(DiagnosticArray, "/diagnostics", on_diagnostics, 20)
+    node.create_subscription(JointState, topics["joint_states"], on_joint_state, 20)
+    node.create_subscription(DiagnosticArray, topics["diagnostics"], on_diagnostics, 20)
 
     match_deadline = time.monotonic() + 15.0
     while rclpy.ok() and publisher.get_subscription_count() < 1:
         if time.monotonic() >= match_deadline:
-            raise RuntimeError("15 秒内未发现 /cmd_vel_nav 订阅者")
+            raise RuntimeError("15 秒内未发现导航速度输入订阅者")
         rclpy.spin_once(node, timeout_sec=0.1)
-    print(f"已匹配 /cmd_vel_nav 订阅者: {publisher.get_subscription_count()}")
+    print(f"已匹配导航速度输入订阅者: {publisher.get_subscription_count()}")
 
     def publish_for(linear: float, angular: float, duration: float) -> None:
         end = time.monotonic() + duration

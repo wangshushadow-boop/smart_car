@@ -16,6 +16,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage
 from small_car_interfaces.msg import AudioFrame
 
+from .interface_contract import load_topics
+
 
 def _stamp_ns(stamp) -> int:
     return stamp.sec * 1_000_000_000 + stamp.nanosec
@@ -27,10 +29,11 @@ class RosPerceptionInput(Node):
     def __init__(self, handler) -> None:
         super().__init__("llm_agent_perception_input")
         self._handler = handler
+        topics = load_topics()
         audio_output_qos = QoSProfile(depth=100)
         audio_output_qos.reliability = ReliabilityPolicy.RELIABLE
         self._audio_output = self.create_publisher(
-            AudioFrame, "/car/audio/output", audio_output_qos
+            AudioFrame, topics["audio_output"], audio_output_qos
         )
         self._playback_active = False
         self._image: tuple[int, bytes] | None = None
@@ -45,8 +48,15 @@ class RosPerceptionInput(Node):
         self._stopping = Event()
         self._worker = Thread(target=self._run, daemon=True)
         self._worker.start()
-        self.create_subscription(CompressedImage, "/car/camera/image/compressed", self._on_image, qos_profile_sensor_data)
-        self.create_subscription(AudioFrame, "/car/audio/input", self._on_audio, qos_profile_sensor_data)
+        self.create_subscription(
+            CompressedImage,
+            topics["camera_image_compressed"],
+            self._on_image,
+            qos_profile_sensor_data,
+        )
+        self.create_subscription(
+            AudioFrame, topics["audio_input"], self._on_audio, qos_profile_sensor_data
+        )
 
     def _on_image(self, msg: CompressedImage) -> None:
         self._image = (_stamp_ns(msg.header.stamp), bytes(msg.data))
