@@ -9,6 +9,7 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(small_car_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
 
 set(ROBOT_HOST_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ROBOT_HOST_BUILD_CORE OFF CACHE BOOL "" FORCE)
@@ -30,6 +31,7 @@ target_link_libraries(jabra_audio_player PRIVATE
   robot_host_audio
   rclcpp::rclcpp
   ${small_car_interfaces_TARGETS}
+  ${std_msgs_TARGETS}
 )
 
 install(TARGETS jabra_audio_publisher jabra_audio_player

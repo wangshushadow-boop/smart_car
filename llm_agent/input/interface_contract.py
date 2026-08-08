@@ -8,7 +8,7 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 
 
-_REQUIRED_TOPICS = ("audio_input", "audio_output", "camera_image_compressed")
+_REQUIRED_TOPICS = ("audio_input", "audio_output", "audio_playback_stop", "camera_image_compressed")
 
 
 def load_topics() -> dict[str, str]:

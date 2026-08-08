@@ -178,6 +178,16 @@ topics:
     publisher: llm_agent
     subscribers: [robot_host/small_car_av]
 
+  # Agent 检测到新的真实人声时发布一次 Empty，要求树莓派立即停止当前 TTS。
+  # 这是播放控制信号而不是音频数据：播放器收到后清空尚未播放的队列并终止 aplay。
+  # 通过该 topic 实现打断（barge-in），使麦克风在播报过程中始终可用。
+  audio_playback_stop:
+    name: /car/audio/playback_stop
+    type: std_msgs/msg/Empty
+    qos: reliable
+    publisher: llm_agent
+    subscribers: [robot_host/small_car_av]
+
   # USB 摄像头的原始 RGB8 图像。该 topic 主要供树莓派侧图像转换使用，
   # 跨机器消费者应订阅压缩图像而不是原始图像。
   camera_image_raw:

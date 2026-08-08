@@ -17,6 +17,7 @@ def _load_topics() -> dict[str, str]:
     required = (
         "audio_input",
         "audio_output",
+        "audio_playback_stop",
         "camera_image_raw",
         "camera_info",
         "camera_image_compressed",
@@ -91,6 +92,7 @@ def generate_launch_description() -> LaunchDescription:
                     {
                         "alsa_device": "plughw:CARD=USB,DEV=0",
                         "output_topic": topics["audio_output"],
+                        "playback_stop_topic": topics["audio_playback_stop"],
                     }
                 ],
                 output="screen",

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/empty.hpp>
 
 #include "small_car_interfaces/msg/audio_frame.hpp"
 
@@ -53,6 +54,8 @@ class AplayProcess {
     }
     return true;
   }
+
+  void StopPlayback() { Stop(); }
 
  private:
   bool Start(std::uint32_t sample_rate, std::uint8_t channels) {
@@ -121,12 +124,15 @@ class JabraAudioPlayer : public rclcpp::Node {
   JabraAudioPlayer() : Node("small_car_jabra_audio_player") {
     device_ = declare_parameter<std::string>("alsa_device", "plughw:CARD=USB,DEV=0");
     topic_ = declare_parameter<std::string>("output_topic", "");
-    if (topic_.empty()) {
-      throw std::invalid_argument("output_topic must be provided by the interface contract");
+    stop_topic_ = declare_parameter<std::string>("playback_stop_topic", "");
+    if (topic_.empty() || stop_topic_.empty()) {
+      throw std::invalid_argument("audio topics must be provided by the interface contract");
     }
     auto qos = rclcpp::QoS(rclcpp::KeepLast(100)).reliable();
     subscription_ = create_subscription<small_car_interfaces::msg::AudioFrame>(
         topic_, qos, std::bind(&JabraAudioPlayer::Enqueue, this, std::placeholders::_1));
+    stop_subscription_ = create_subscription<std_msgs::msg::Empty>(
+        stop_topic_, qos, std::bind(&JabraAudioPlayer::Cancel, this, std::placeholders::_1));
     writer_thread_ = std::thread(&JabraAudioPlayer::WriterLoop, this);
     RCLCPP_INFO(get_logger(), "audio output uses aplay pipe: %s", device_.c_str());
   }
@@ -163,15 +169,33 @@ class JabraAudioPlayer : public rclcpp::Node {
     queue_ready_.notify_one();
   }
 
+  void Cancel(const std_msgs::msg::Empty::SharedPtr) {
+    {
+      std::lock_guard<std::mutex> lock(queue_mutex_);
+      queue_.clear();
+      cancel_requested_ = true;
+    }
+    queue_ready_.notify_one();
+    RCLCPP_INFO(get_logger(), "audio playback cancelled by barge-in request");
+  }
+
   void WriterLoop() {
     AplayProcess aplay(device_);
     while (true) {
       AudioPacket packet;
       {
         std::unique_lock<std::mutex> lock(queue_mutex_);
-        queue_ready_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+        queue_ready_.wait(lock, [this] {
+          return stopping_ || cancel_requested_ || !queue_.empty();
+        });
         if (stopping_) {
           return;
+        }
+        if (cancel_requested_) {
+          cancel_requested_ = false;
+          lock.unlock();
+          aplay.StopPlayback();
+          continue;
         }
         packet = std::move(queue_.front());
         queue_.pop_front();
@@ -189,12 +213,15 @@ class JabraAudioPlayer : public rclcpp::Node {
 
   std::string device_;
   std::string topic_;
+  std::string stop_topic_;
   std::deque<AudioPacket> queue_;
   bool stopping_ = false;
+  bool cancel_requested_ = false;
   std::mutex queue_mutex_;
   std::condition_variable queue_ready_;
   std::thread writer_thread_;
   rclcpp::Subscription<small_car_interfaces::msg::AudioFrame>::SharedPtr subscription_;
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr stop_subscription_;
 };
 
 }  // namespace small_car_av

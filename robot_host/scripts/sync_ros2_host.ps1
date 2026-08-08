@@ -65,7 +65,7 @@ try {
     "chmod +x '$remoteRobotHost/tools/recover_mcu_usb.sh' '$remoteRobotHost/scripts/update_mcu_firmware.sh'",
     "docker compose -f '$remoteCompose' up --build -d --force-recreate",
     "docker compose -f '$remoteCompose' ps",
-    "for attempt in {1..45}; do if docker compose -f '$remoteCompose' exec -T small_car_ros2 bash -lc 'test -f /workspace/smart_car/robot_host/install-ros/setup.bash && source /opt/ros/kilted/setup.bash && source /workspace/smart_car/robot_host/install-ros/setup.bash && timeout 10 ros2 node list | grep -Fx /small_car_base >/dev/null && timeout 10 ros2 topic list | grep -Fx /car/audio/input >/dev/null'; then echo 'ros_health=ok'; exit 0; fi; sleep 2; done; echo 'ROS health check failed' >&2; docker compose -f '$remoteCompose' logs --tail=200; exit 1"
+    "for attempt in {1..45}; do if docker compose -f '$remoteCompose' exec -T small_car_ros2 bash -lc 'test -f /workspace/smart_car/robot_host/install-ros/setup.bash && source /opt/ros/kilted/setup.bash && source /workspace/smart_car/robot_host/install-ros/setup.bash && timeout 10 ros2 node list | grep -Fx /small_car_base >/dev/null && timeout 10 ros2 topic list | grep -Fx /car/audio/input >/dev/null && timeout 10 ros2 topic list | grep -Fx /car/audio/playback_stop >/dev/null'; then echo 'ros_health=ok'; exit 0; fi; sleep 2; done; echo 'ROS health check failed' >&2; docker compose -f '$remoteCompose' logs --tail=200; exit 1"
   )
   & ssh -p $SshPort $remoteTarget ($remoteSteps -join " && ")
   if ($LASTEXITCODE -ne 0) { throw "Host deployment failed" }
