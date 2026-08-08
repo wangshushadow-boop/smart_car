@@ -1,5 +1,9 @@
 # MiniCPM-o AWQ 原生语音服务
 
+> 说明：本服务能够生成原生语音，但当前 Agent 不播放 completion 中的原生 WAV。模型响应中的文本与
+> 原生音频尚未建立可靠的最终答案关联，因此 Agent 只采用清洗后的最终文本，并交给独立 Piper TTS
+> 合成播报音频。本文保留原生语音服务的部署和独立验证方法。
+
 当前方案在 RTX 3090 24GB 上运行 `MiniCPM-o-4_5-AWQ`，由 vLLM-Omni 的三个阶段完成
 多模态理解、语音编码和 24 kHz 波形生成。
 
@@ -72,27 +76,10 @@ curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
 
 必须为本机请求绕过 HTTP 代理，否则代理可能返回 502，并不代表模型服务异常。
 
-## 生成测试语音
+## Agent 在线语音
 
-```zsh
-/opt/minicpm-service/venv/bin/python scripts/test_minicpm_omni_audio.py
-```
-
-默认生成：
-
-```text
-/tmp/minicpm_omni_test.wav
-```
-
-可以用环境变量修改文本和输出路径：
-
-```zsh
-MINICPM_OMNI_TEST_TEXT='小车语音测试' \
-MINICPM_OMNI_TEST_WAV=/tmp/car_test.wav \
-/opt/minicpm-service/venv/bin/python scripts/test_minicpm_omni_audio.py
-```
-
-测试脚本通过 WebSocket 接收模型原生 WAV。Agent 后续将得到的 WAV 发布到树莓派音频输出 topic，
+仓库当前没有独立的原生 WAV 测试客户端。上述 `/health` 和 `/v1/models` 用于验证服务，实际在线链路
+由 Agent 调用文本 completion，再使用 Piper 生成 WAV。Piper WAV 会发布到树莓派音频输出 topic，
 由 `robot_host` 的播放节点输出到 Jabra。
 
 ## 已验证结果

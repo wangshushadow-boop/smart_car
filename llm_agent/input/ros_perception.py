@@ -17,6 +17,7 @@ from sensor_msgs.msg import CompressedImage
 from small_car_interfaces.msg import AudioFrame
 from std_msgs.msg import Empty
 
+from llm_agent.agent.events import AgentEvent, SpeechFinished
 from .interface_contract import load_topics
 from .playback_echo import PlaybackEchoSuppressor
 
@@ -57,7 +58,7 @@ class RosPerceptionInput(Node):
         self.declare_parameter("vad_min_speech_ms", 300)
         self.declare_parameter("vad_silence_ms", 600)
         self.declare_parameter("barge_in_energy_threshold", 700)
-        self._events: Queue[dict | None] = Queue(maxsize=4)
+        self._events: Queue[AgentEvent | None] = Queue(maxsize=4)
         self._stopping = Event()
         self._worker = Thread(target=self._run, daemon=True)
         self._worker.start()
@@ -136,7 +137,10 @@ class RosPerceptionInput(Node):
         image_url = None
         if self._image:
             image_url = "data:image/jpeg;base64," + base64.b64encode(self._image[1]).decode("ascii")
-        event = {"event": "speech_finished", "speech_wav": wav.getvalue(), "perception": {"image_data_url": image_url}}
+        event = SpeechFinished(
+            speech_wav=wav.getvalue(),
+            perception={"image_data_url": image_url},
+        )
         if self._events.full():
             self.get_logger().warning("Agent 忙碌，丢弃语音事件")
         else:

@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from input.playback_echo import PlaybackEchoSuppressor
+from llm_agent.input.playback_echo import PlaybackEchoSuppressor
 
 
 class PlaybackEchoSuppressorTest(unittest.TestCase):

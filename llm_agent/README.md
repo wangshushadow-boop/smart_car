@@ -12,9 +12,9 @@ WSL 从零构建、整体备份和跨主机迁移步骤见：
 - WSL 用户：`llm_agent`
 - 用户主目录：`/home/llm_agent`
 - Python 环境：`/opt/minicpm-service/venv`
-- 模型目录：`/opt/models/MiniCPM-o-4_5-AWQ`
-- API 地址：`http://127.0.0.1:8000/v1`
-- API 模型名：`minicpm-o-4.5-awq`
+- 模型目录：`/mnt/d/AI/models/MiniCPM-o-4_5-AWQ`
+- API 地址：`http://127.0.0.1:8099/v1`
+- API 模型名：`/mnt/d/AI/models/MiniCPM-o-4_5-AWQ`
 
 ## 1. 从 Windows 进入 WSL
 
@@ -89,11 +89,10 @@ exec zsh
 
 ## 3. 启动模型
 
-先设置一个本机 API 密钥，再启动：
+启动当前 MiniCPM-o Omni 服务：
 
 ```bash
-export MINICPM_API_KEY='请替换为随机且足够长的密钥'
-./scripts/start_minicpm.sh
+./scripts/start_minicpm_omni.sh
 ```
 
 首次启动通常需要约 1～2 分钟。启动脚本以前台方式运行，请保持这个 WSL
@@ -102,25 +101,13 @@ PowerShell/Windows Terminal 标签页，再次进入 WSL。
 
 WSL 与普通 Linux 服务器不同：启动 WSL 的 Windows 客户端全部退出后，WSL
 可能会清理孤立的 `nohup` 后台进程。因此脚本不使用不可靠的后台脱离方式。
-日志位于：
+模型日志直接输出在启动脚本所在的前台终端。
 
-```text
-/opt/minicpm-service/logs/minicpm-o.stdout.log
-/opt/minicpm-service/logs/minicpm-o.stderr.log
-```
-
-## 4. 检查状态和测试对话
+## 4. 检查状态
 
 ```bash
-export MINICPM_API_KEY='与启动时相同的密钥'
-./scripts/status_minicpm.sh
-./scripts/chat_test.sh
-```
-
-查看实时日志：
-
-```bash
-tail -f /opt/minicpm-service/logs/minicpm-o.stdout.log
+curl --noproxy '*' -fsS http://127.0.0.1:8099/health
+curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
 ```
 
 查看显存：
@@ -131,35 +118,46 @@ watch -n 1 nvidia-smi
 
 ## 5. 停止模型
 
-```bash
-./scripts/stop_minicpm.sh
-```
+服务以前台方式运行，在启动模型的终端按 `Ctrl+C` 停止。
 
-## 6. 供 Agent/Hermes 调用
+## 6. Agent 架构与调用参数
 
 兼容 OpenAI API 的连接参数：
 
 ```text
-Base URL: http://127.0.0.1:8000/v1
-Model: minicpm-o-4.5-awq
-API Key: MINICPM_API_KEY 设置的值
+Base URL: http://127.0.0.1:8099/v1
+Model: /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
+API Key: EMPTY
 ```
 
-后续 Agent 代码建议继续按以下结构添加：
+Agent 通过 `127.0.0.1` 访问服务，但启动脚本当前使用 `0.0.0.0:8099` 监听且未启用 API 鉴权。
+只应在受信任网络使用，并通过 Windows/WSL 防火墙限制 8099 端口，不要暴露到公网。
+
+当前 Agent 已按以下边界组织：
 
 ```text
 llm_agent/
-├── agent/          # Agent 循环、模型路由和工具调度
-├── memory/         # 长期记忆与短期上下文管理
-├── tools/          # ROS 2、小车控制、视觉及网络工具
+├── app/            # 应用装配和 ROS 进程入口
+├── agent/          # 事件、状态、LangGraph 编排和运行时
+├── models/         # MiniCPM-o 后端及输出解析
+├── tools/          # 强类型白名单工具和统一执行注册表
+├── adapters/audio/ # Piper TTS 等外部音频适配
+├── input/          # ROS 音视频聚合、VAD 和回声抑制
+├── prompts/        # 版本化系统、意图、回复和安全提示词
 ├── config/         # 不含密钥的配置模板
+├── docs/           # 架构、接口、部署和运行文档
 └── scripts/        # 模型和 Agent 运维脚本
 ```
 
-不要把真实 API 密钥提交到 Git。后续可使用本地 `.env` 文件，并把它加入
-`.gitignore`。
+不要把真实 API 密钥提交到 Git。后续启用鉴权时可使用本地 `.env` 文件，并把它加入 `.gitignore`。
 
 当前 Agent 输入在 `llm_agent/input`：它直接订阅树莓派发布的
 `/car/audio/input` 和 `/car/camera/image/compressed`，在 WSL 内完成 VAD 后调用 LangGraph。
 
+当前图支持闲聊、车辆状态查询意图、工具白名单校验和独立 TTS。唯一注册的
+`get_robot_status` 是只读工具；ROS 状态网关将在下一阶段接入，在此之前会明确返回不可用。
+车辆移动、导航和任意 ROS topic 发布均未开放。
+
 已验证的语音对话启动、检查和排错步骤见[Agent 语音对话链路](docs/agent_ros_voice_loop.md)。
+内部设计见[Agent 架构](docs/architecture.md)、[状态与事件](docs/agent_state.md)和
+[工具契约](docs/tool_contract.md)。

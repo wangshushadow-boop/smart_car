@@ -19,10 +19,10 @@
 | 默认 Shell | `/usr/bin/zsh` |
 | GPU | NVIDIA GeForce RTX 3090 24 GB |
 | Python 环境 | `/opt/minicpm-service/venv` |
-| 模型目录 | `/opt/models/MiniCPM-o-4_5-AWQ` |
+| 模型目录 | `/mnt/d/AI/models/MiniCPM-o-4_5-AWQ` |
 | 推理框架 | vLLM 0.26.0 |
 | 模型服务名 | `minicpm-o-4.5-awq` |
-| API 地址 | `http://127.0.0.1:8000/v1` |
+| API 地址 | `http://127.0.0.1:8099/v1` |
 
 Ubuntu 的根文件系统保存在：
 
@@ -107,7 +107,7 @@ wsl -d Ubuntu-24.04
 
 ```bash
 cd /mnt/d/work/smart_car/llm_agent
-./scripts/stop_minicpm.sh
+# 模型以前台方式运行；先在启动模型的终端按 Ctrl+C。
 exit
 ```
 
@@ -371,12 +371,11 @@ ModelScope 页面确认当前仓库 ID。
 
 ## 12. 启动 MiniCPM-o
 
-进入项目目录并设置本机 API 密钥：
+进入项目目录并启动当前 Omni 服务：
 
 ```bash
 cd /mnt/d/work/smart_car/llm_agent
-export MINICPM_API_KEY='请替换为随机且足够长的密钥'
-./scripts/start_minicpm.sh
+./scripts/start_minicpm_omni.sh
 ```
 
 启动脚本使用两个 WSL 兼容参数：
@@ -397,11 +396,13 @@ VLLM_USE_FLASHINFER_SAMPLER=0
 启动脚本以前台方式运行。请保持该 WSL 终端打开，另开终端检查状态：
 
 ```bash
-export MINICPM_API_KEY='与启动时相同的密钥'
 cd /mnt/d/work/smart_car/llm_agent
-./scripts/status_minicpm.sh
-./scripts/chat_test.sh
+curl --noproxy '*' -fsS http://127.0.0.1:8099/health
+curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
 ```
+
+启动脚本绑定 `0.0.0.0:8099` 且当前没有 API 鉴权。迁移后必须确认 Windows/WSL 防火墙没有将该端口
+暴露到不受信任网络；Agent 本机调用统一使用 `127.0.0.1`。
 
 ## 13. 迁移后的完整验收
 
@@ -434,15 +435,13 @@ torch.cuda.get_device_name(), torch.cuda.get_device_properties(0).total_memory)"
 ### 13.4 API
 
 ```bash
-export MINICPM_API_KEY='迁移后的服务密钥'
-curl -H "Authorization: Bearer ${MINICPM_API_KEY}" \
-  http://127.0.0.1:8000/v1/models
+curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
 ```
 
 预期返回模型 ID：
 
 ```text
-minicpm-o-4.5-awq
+/mnt/d/AI/models/MiniCPM-o-4_5-AWQ
 ```
 
 ## 14. 备份建议
