@@ -38,7 +38,7 @@ ros_middleware                公共 msg 和 ROS 2 容器环境
 | `small_car_av` | 摄像头、压缩图像、音频输入与播放 |
 | `small_car_description` | URDF、TF、RViz 配置 |
 | `small_car_nav2` | Nav2 启动和参数 |
-| `small_car_interfaces` | 公共 `AudioFrame`、`SpeechEvent` 消息；位于 `ros_middleware/src` |
+| `small_car_interfaces` | 公共 `AudioFrame` 消息；位于 `ros_middleware/src` |
 
 ## 运行链路
 

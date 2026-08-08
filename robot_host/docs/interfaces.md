@@ -20,8 +20,6 @@
 | 输出 | `/car/camera/image/compressed` | `sensor_msgs/msg/CompressedImage` | JPEG 压缩图像 |
 | 输出 | `/car/audio/input` | `small_car_interfaces/msg/AudioFrame` | 默认 16 kHz、单声道、PCM S16LE |
 
-`SpeechEvent` 用于语音感知向 Agent 传递一句话音频及最近压缩图像；消息已定义，但不由当前 `robot_host` 节点直接发布。
-
 当前没有自定义 service 或 action。Nav2 使用其标准 action、service 和 lifecycle 接口。
 
 ## 音频消息

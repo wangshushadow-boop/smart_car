@@ -7,7 +7,7 @@
 | 名称 | 类型 | 约定 |
 | --- | --- | --- |
 | `/car/audio/input` | `small_car_interfaces/msg/AudioFrame` | 麦克风 PCM 音频帧 |
-| `/car/agent/speech_finished` | `small_car_interfaces/msg/SpeechEvent` | 一轮语音输入结束事件 |
+| `/car/audio/output` | `small_car_interfaces/msg/AudioFrame` | Agent 发送至车载扬声器的 PCM 音频帧 |
 | `/car/camera/image/compressed` | `sensor_msgs/msg/CompressedImage` | 压缩相机图像 |
 
 新增接口时优先使用 ROS 标准消息。自定义接口必须在这里记录单位、坐标系、QoS、频率和超时语义。

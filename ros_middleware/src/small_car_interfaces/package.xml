@@ -2,7 +2,7 @@
 <package format="3">
   <name>small_car_interfaces</name>
   <version>0.1.0</version>
-  <description>小车音频、感知和 Agent 使用的自定义 ROS 2 接口。</description>
+  <description>小车跨工程使用的自定义 ROS 2 接口。</description>
   <maintainer email="small-car@example.com">small_car</maintainer>
   <license>Apache-2.0</license>
 
@@ -10,7 +10,6 @@
   <build_depend>rosidl_default_generators</build_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
   <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
 
   <member_of_group>rosidl_interface_packages</member_of_group>
 

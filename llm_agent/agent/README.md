@@ -4,13 +4,11 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| `input_contract.py` | 将 ROS `SpeechEvent` 转成一次 Agent 调用的数据结构与 WAV/JPEG 输入 |
-| `ros_event_source.py` | 订阅 `/car/agent/speech_finished`，在后台线程分发事件 |
 | `langgraph_runtime.py` | 调用编译后的 LangGraph 图；后续模型路由、记忆和工具节点均从这里组合 |
 | `graph.py` | 第一版图：感知事件调用本地 MiniCPM-o 并产生文本回复 |
 | `minicpm_client.py` | 本地 OpenAI 兼容 API 的图像、音频与文本调用 |
 | `run_agent.py` | 可直接运行的 Agent 入口 |
 
-数据边界：`robot_host` 发布 `small_car_interfaces/msg/SpeechEvent`；本目录订阅它。
+数据边界：`llm_agent/input` 直接订阅小车发布的音频和压缩图像，并在本地完成 VAD。
 Agent 可使用图像和 WAV 进行本轮推理，但长期记忆只应保存转写、摘要和任务状态。
 完整运行步骤见[语音对话链路](../docs/agent_ros_voice_loop.md)。
