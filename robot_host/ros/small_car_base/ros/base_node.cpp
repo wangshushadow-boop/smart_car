@@ -32,6 +32,7 @@
 #include <sensor_msgs/msg/range.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
+#include "small_car_base/buffer/ring_buffer.hpp"
 #include "small_car_base/chassis/chassis_config.hpp"
 #include "small_car_base/control/command_safety.hpp"
 #include "small_car_base/mcu/car_client.hpp"
@@ -79,6 +80,8 @@ class SmallCarBaseNode : public rclcpp::Node {
     // 构造阶段只做一次性初始化：读取 ROS 参数、打开串口、下发底盘参数、创建话题和定时器。
     DeclareParameters();
     ReadParameters();
+    ultrasonic_samples_ =
+        std::make_unique<small_car::RingBuffer<double>>(ultrasonic_filter_window_);
     command_safety_ = std::make_unique<small_car::CommandSafety>(
         max_linear_speed_mps_, max_angular_speed_rad_s_, cmd_vel_timeout_,
         front_stop_distance_m_);
@@ -127,6 +130,7 @@ class SmallCarBaseNode : public rclcpp::Node {
     declare_parameter<double>("ultrasonic_min_range_m", 0.02);
     declare_parameter<double>("ultrasonic_max_range_m", 4.0);
     declare_parameter<double>("ultrasonic_field_of_view_rad", 0.52);
+    declare_parameter<int>("ultrasonic_filter_window", 5);
     declare_parameter<double>("odom_linear_velocity_variance", 0.04);
     declare_parameter<double>("odom_angular_velocity_variance", 0.05);
     declare_parameter<double>("imu_acceleration_variance", 0.1);
@@ -201,6 +205,15 @@ class SmallCarBaseNode : public rclcpp::Node {
     ultra_min_m_ = get_parameter("ultrasonic_min_range_m").as_double();
     ultra_max_m_ = get_parameter("ultrasonic_max_range_m").as_double();
     ultra_fov_rad_ = get_parameter("ultrasonic_field_of_view_rad").as_double();
+    const auto ultrasonic_filter_window =
+        get_parameter("ultrasonic_filter_window").as_int();
+    if (ultrasonic_filter_window <= 0 || ultrasonic_filter_window > 31 ||
+        ultrasonic_filter_window % 2 == 0) {
+      throw std::runtime_error(
+          "ultrasonic_filter_window must be an odd integer in [1, 31]");
+    }
+    ultrasonic_filter_window_ =
+        static_cast<std::size_t>(ultrasonic_filter_window);
     odom_linear_velocity_variance_ =
         get_parameter("odom_linear_velocity_variance").as_double();
     odom_angular_velocity_variance_ =
@@ -294,8 +307,12 @@ class SmallCarBaseNode : public rclcpp::Node {
     wheel_odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(wheel_odom_raw_topic_, 10);
     imu_raw_pub_ = create_publisher<sensor_msgs::msg::Imu>(
         imu_data_raw_topic_, rclcpp::SensorDataQoS());
+    // 超声波消息体小且频率低，使用可靠 QoS 方便 RQt 默认订阅；
+    // Nav2 的 BEST_EFFORT 订阅仍可兼容 RELIABLE 发布端。
+    const auto ultrasonic_qos =
+        rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
     range_pub_ = create_publisher<sensor_msgs::msg::Range>(
-        ultrasonic_front_topic_, rclcpp::SensorDataQoS());
+        ultrasonic_front_topic_, ultrasonic_qos);
     if (publish_joint_states_) {
       joint_pub_ =
           create_publisher<sensor_msgs::msg::JointState>(joint_states_topic_, 10);
@@ -331,22 +348,25 @@ class SmallCarBaseNode : public rclcpp::Node {
     }
   }
 
-  /** 接收 Nav2 最终速度；拒绝无时间戳、过期或来自未来的命令。 */
+  /** 接收 Nav2 最终速度；无时间戳、过期或来自未来的命令触发立即停车。 */
   void OnCmdVel(const geometry_msgs::msg::TwistStamped::SharedPtr message) {
     const rclcpp::Time stamp(message->header.stamp);
     const double age_s = (now() - stamp).seconds();
+    const auto received_at = std::chrono::steady_clock::now();
     if (stamp.nanoseconds() == 0 || age_s < -0.1 ||
         age_s > std::chrono::duration<double>(cmd_vel_timeout_).count()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                           "rejected stale or invalid velocity command");
+                           "rejected stale or invalid velocity command; "
+                           "forcing stop");
+      // 不能继续保留上一条有效速度，否则安全节点的停车命令异常时车辆会延迟停车。
+      command_safety_->SetCommand({}, received_at);
+      SendSafeCommand(command_safety_->Evaluate(received_at));
       return;
     }
 
     command_safety_->SetCommand(
-        {message->twist.linear.x, message->twist.angular.z},
-        std::chrono::steady_clock::now());
-    SendSafeCommand(command_safety_->Evaluate(
-        std::chrono::steady_clock::now()));
+        {message->twist.linear.x, message->twist.angular.z}, received_at);
+    SendSafeCommand(command_safety_->Evaluate(received_at));
   }
 
   void SendSafeCommand(const small_car::SafeCommand& command) {
@@ -659,7 +679,17 @@ class SmallCarBaseNode : public rclcpp::Node {
     imu_raw_pub_->publish(raw);
   }
 
-  /** 发布有效超声测距，并直接更新内部安全模块。 */
+  /** 将最近测距窗口取中值，抑制室内多径反射产生的孤立跳变。 */
+  double FilterUltrasonicRange(double range_m) {
+    ultrasonic_samples_->Write(&range_m, 1);
+    std::vector<double> samples(ultrasonic_samples_->size());
+    ultrasonic_samples_->CopyTo(samples.data(), samples.size());
+    const auto middle = samples.begin() + samples.size() / 2;
+    std::nth_element(samples.begin(), middle, samples.end());
+    return *middle;
+  }
+
+  /** 发布经过中值滤波的有效超声测距，并更新内部安全模块。 */
   void PublishRange() {
     const auto value = client_.GetChassisStatus();
     if (!value.has_value() || value->mcu_time_ms == last_chassis_time_ms_) {
@@ -667,10 +697,14 @@ class SmallCarBaseNode : public rclcpp::Node {
     }
     last_chassis_time_ms_ = value->mcu_time_ms;
     if (value->ultra_mm < 0) {
+      ultrasonic_samples_->Clear();
+      filtered_ultrasonic_m_.reset();
       command_safety_->SetFrontRange(0.0, false);
       return;
     }
-    command_safety_->SetFrontRange(value->ultra_mm / 1000.0, true);
+    filtered_ultrasonic_m_ =
+        FilterUltrasonicRange(value->ultra_mm / 1000.0);
+    command_safety_->SetFrontRange(*filtered_ultrasonic_m_, true);
     sensor_msgs::msg::Range message;
     message.header.stamp = now();
     message.header.frame_id = ultrasonic_frame_;
@@ -678,7 +712,7 @@ class SmallCarBaseNode : public rclcpp::Node {
     message.field_of_view = static_cast<float>(ultra_fov_rad_);
     message.min_range = static_cast<float>(ultra_min_m_);
     message.max_range = static_cast<float>(ultra_max_m_);
-    message.range = static_cast<float>(value->ultra_mm / 1000.0);
+    message.range = static_cast<float>(*filtered_ultrasonic_m_);
     range_pub_->publish(message);
   }
 
@@ -743,6 +777,11 @@ class SmallCarBaseNode : public rclcpp::Node {
           DiagnosticValue("mcu_turn_value", std::to_string(chassis->turn)));
       status.values.push_back(
           DiagnosticValue("ultrasonic_mm", std::to_string(chassis->ultra_mm)));
+      if (filtered_ultrasonic_m_.has_value()) {
+        status.values.push_back(DiagnosticValue(
+            "ultrasonic_filtered_mm",
+            std::to_string(*filtered_ultrasonic_m_ * 1000.0)));
+      }
     }
 
     const auto ack = client_.GetLastAck();
@@ -786,6 +825,7 @@ class SmallCarBaseNode : public rclcpp::Node {
   double ultra_min_m_ = 0.02;
   double ultra_max_m_ = 4.0;
   double ultra_fov_rad_ = 0.52;
+  std::size_t ultrasonic_filter_window_ = 5;
 
   // 发布给定位和融合算法的初始方差；后续应使用实测数据标定。
   double odom_linear_velocity_variance_ = 0.04;
@@ -816,6 +856,8 @@ class SmallCarBaseNode : public rclcpp::Node {
   small_car::ServoMapping lower_servo_mapping_;
   std::unique_ptr<small_car::GimbalController> gimbal_;
   std::unique_ptr<small_car::CommandSafety> command_safety_;
+  std::unique_ptr<small_car::RingBuffer<double>> ultrasonic_samples_;
+  std::optional<double> filtered_ultrasonic_m_;
 
   // 各 MCU 消息最近时间戳用于去重；UINT*_MAX 表示尚未接收过。
   std::uint32_t last_encoder_time_ms_ = UINT32_MAX;

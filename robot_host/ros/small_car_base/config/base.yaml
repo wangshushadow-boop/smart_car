@@ -45,6 +45,10 @@ small_car_base:
     # 超声波水平视场角，单位 rad；写入 sensor_msgs/Range.field_of_view。
     ultrasonic_field_of_view_rad: 0.52
 
+    # 超声波中值滤波窗口；必须为 1～31 的奇数。
+    # 5 个样本可滤除当前遥测中成对出现的室内多径跳变，同时保留 MCU 近障硬停车。
+    ultrasonic_filter_window: 5
+
     # 未融合轮式里程计中线速度协方差，单位 (m/s)²。
     odom_linear_velocity_variance: 0.04
 
