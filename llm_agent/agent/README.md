@@ -19,7 +19,8 @@
 - 树莓派 `robot_host/ros/agent_client` 负责 VAD、画面聚合和硬件播放；
 - 仓库顶层 `agent_debug_web` 是完全独立的 Action Client。
 
-当前仅开放只读的 `get_robot_status` 工具。在 ROS 状态网关实现前，它会明确返回不可用；车辆动作工具尚未开放。
+当前开放只读的 `get_robot_status`，以及生成声明式任务的 `move_relative`、`rotate_relative`、
+`stop_motion`。动作工具不在 Agent Server 访问硬件；树莓派收到任务后还会执行第二次安全校验。
 详细设计见[Agent 架构](../docs/architecture.md)、[模型 Provider](../docs/model_providers.md)、
 [状态与事件](../docs/agent_state.md)和[工具契约](../docs/tool_contract.md)；完整运行步骤见
 [语音对话链路](../docs/agent_ros_voice_loop.md)。

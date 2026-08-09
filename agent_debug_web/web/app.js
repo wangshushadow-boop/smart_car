@@ -6,6 +6,7 @@ const allowTools = document.querySelector("#allowTools");
 const button = document.querySelector("#submitButton");
 const status = document.querySelector("#status");
 const answer = document.querySelector("#answer");
+const task = document.querySelector("#task");
 const audio = document.querySelector("#audio");
 const metadata = document.querySelector("#metadata");
 const error = document.querySelector("#error");
@@ -33,6 +34,7 @@ form.addEventListener("submit", async (event) => {
   status.textContent = "Agent 处理中…";
   error.textContent = "";
   audio.hidden = true;
+  task.hidden = true;
   const inputs = [];
   if (prompt.value.trim()) {
     inputs.push({ type: "text", name: "prompt", mime_type: "text/plain", text: prompt.value.trim() });
@@ -60,7 +62,16 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(payload.error || "请求失败");
     const text = payload.outputs.find((part) => part.type === "text");
     const voice = payload.outputs.find((part) => part.type === "audio" && part.data_base64);
+    const robotTask = payload.outputs.find((part) => part.type === "json" && part.name === "robot_task");
     answer.textContent = text?.text || "（没有文本输出）";
+    if (robotTask) {
+      try {
+        task.textContent = `运动任务预览\n${JSON.stringify(JSON.parse(robotTask.text), null, 2)}`;
+      } catch (_) {
+        task.textContent = `运动任务格式无效\n${robotTask.text}`;
+      }
+      task.hidden = false;
+    }
     if (voice) {
       audio.src = `data:${voice.mime_type};base64,${voice.data_base64}`;
       audio.hidden = false;

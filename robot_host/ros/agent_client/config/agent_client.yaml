@@ -10,3 +10,8 @@ car_agent_client:
     vad_silence_ms: 600
     vad_preroll_ms: 500
     max_speech_seconds: 15
+    # 模型不能覆盖下列本地安全限制和执行参数。
+    motion_max_distance_m: 2.0
+    motion_max_rotation_deg: 180.0
+    motion_linear_speed_mps: 0.2
+    motion_timeout_seconds: 15.0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from llm_agent.tools.context import ToolContext
 from llm_agent.tools.registry import ToolRegistry
+from llm_agent.tools.vehicle import MOTION_TASK_SCHEMA
 
 
 def create_execute_tool_node(registry: ToolRegistry):
@@ -20,6 +21,10 @@ def create_execute_tool_node(registry: ToolRegistry):
                 services={},
             ),
         )
-        return {"tool_result": result}
+        update = {"tool_result": result}
+        # 动作工具只产生声明式任务。真正的 ROS 调用和第二次安全校验在树莓派执行。
+        if result.success and result.data.get("schema") == MOTION_TASK_SCHEMA:
+            update["command"] = result.data
+        return update
 
     return execute_tool

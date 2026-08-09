@@ -35,6 +35,7 @@ class AgentState(TypedDict, total=False):
     intent: IntentDecision
     tool_call: object
     tool_result: object
+    command: dict
     answer: str
     answer_wav: bytes
     generation_backend: str

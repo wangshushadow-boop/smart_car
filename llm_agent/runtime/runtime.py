@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from threading import Event, Lock
 from time import monotonic
@@ -86,6 +87,17 @@ class AgentRuntime:
                 text=state.get("answer", "（无回复）"),
             )
         ]
+        if state.get("command"):
+            outputs.append(
+                ContentPart(
+                    type=ContentType.JSON,
+                    name="robot_task",
+                    mime_type="application/json",
+                    text=json.dumps(
+                        state["command"], ensure_ascii=False, separators=(",", ":")
+                    ),
+                )
+            )
         if state.get("answer_wav"):
             outputs.append(
                 ContentPart(

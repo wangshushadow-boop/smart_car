@@ -8,7 +8,13 @@ from llm_agent.adapters.audio.tts import PiperSpeech, SpeechSynthesizer
 from llm_agent.models.minicpm import MiniCpmModel
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.tools.registry import ToolRegistry
-from llm_agent.tools.vehicle.status import GetRobotStatusTool, RobotStatusProvider
+from llm_agent.tools.vehicle import (
+    GetRobotStatusTool,
+    MoveRelativeTool,
+    RobotStatusProvider,
+    RotateRelativeTool,
+    StopMotionTool,
+)
 
 from .nodes import (
     create_execute_tool_node,
@@ -34,6 +40,9 @@ def build_graph(
     if registry is None:
         registry = ToolRegistry()
         registry.register(GetRobotStatusTool(status_provider))
+        registry.register(MoveRelativeTool())
+        registry.register(RotateRelativeTool())
+        registry.register(StopMotionTool())
 
     graph = StateGraph(AgentState)
     graph.add_node("understand_intent", create_understand_node(model, prompts))
@@ -46,7 +55,11 @@ def build_graph(
 
     def route_intent(state: AgentState) -> str:
         decision = state["intent"]
-        if decision.intent == IntentType.QUERY and state.get("tool_call"):
+        if decision.intent in {
+            IntentType.QUERY,
+            IntentType.ACTION,
+            IntentType.CANCEL,
+        } and state.get("tool_call"):
             return "safety_check"
         return "generate_response"
 

@@ -43,7 +43,7 @@ ros_middleware                公共 msg 和 ROS 2 容器环境
 
 ## 运行链路
 
-控制链路：`Nav2/Agent -> /cmd_vel -> small_car_base -> USART3 -> MCU`。
+控制链路：`Agent 声明式任务 -> agent_client 本地校验 -> Nav2 Action -> /cmd_vel -> small_car_base -> USART3 -> MCU`。
 
 状态链路：`MCU -> USART3 -> /wheel/odom_raw + /imu/data_raw -> EKF -> /odom`。
 

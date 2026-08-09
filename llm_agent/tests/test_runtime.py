@@ -18,6 +18,11 @@ class RecordingGraph:
             "answer_wav": b"RIFF-test",
             "generation_backend": "fake-model",
             "speech_backend": "fake-tts",
+            "command": {
+                "schema": "small_car.motion.v1",
+                "action": "move_relative",
+                "distance_m": 1.0,
+            },
         }
 
 
@@ -39,7 +44,12 @@ class RuntimeTest(unittest.TestCase):
         response = AgentRuntime(graph).run(request)
         self.assertEqual(response.status, "completed")
         self.assertEqual(response.request_id, request.request_id)
-        self.assertEqual([part.type for part in response.outputs], [ContentType.TEXT, ContentType.AUDIO])
+        self.assertEqual(
+            [part.type for part in response.outputs],
+            [ContentType.TEXT, ContentType.JSON, ContentType.AUDIO],
+        )
+        self.assertEqual(response.outputs[1].name, "robot_task")
+        self.assertIn('"distance_m":1.0', response.outputs[1].text)
         self.assertIs(graph.inputs[0]["request"], request)
 
     def test_runtime_honours_request_cancellation(self) -> None:

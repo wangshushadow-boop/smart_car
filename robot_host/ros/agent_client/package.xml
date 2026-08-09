@@ -10,8 +10,10 @@
   <build_depend>libasound2-dev</build_depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
+  <depend>nav2_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>small_car_interfaces</depend>
+  <depend>yaml-cpp</depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>image_transport</exec_depend>
   <exec_depend>launch</exec_depend>

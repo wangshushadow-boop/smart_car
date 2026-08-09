@@ -20,9 +20,32 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
             progress("generating", 65, "正在生成最终回复")
         decision = state["intent"]
         if decision.intent == IntentType.ACTION:
-            return {"answer": "当前版本尚未开放车辆动作控制。"}
+            command = state.get("command")
+            if not command:
+                return {
+                    "answer": "动作请求没有通过安全校验，车辆不会移动。"
+                }
+            action = command.get("action")
+            if action == "move_relative":
+                distance = float(command["distance_m"])
+                direction = "前进" if distance > 0 else "后退"
+                return {
+                    "answer": f"好的，准备{direction}{abs(distance):g}米。",
+                    "command": command,
+                }
+            if action == "rotate_relative":
+                angle = float(command["angle_deg"])
+                direction = "左转" if angle > 0 else "右转"
+                return {
+                    "answer": f"好的，准备{direction}{abs(angle):g}度。",
+                    "command": command,
+                }
+            return {"answer": "动作类型不受支持，车辆不会移动。"}
         if decision.intent == IntentType.CANCEL:
-            return {"answer": "已收到停止或取消请求。"}
+            command = state.get("command")
+            if command and command.get("action") == "stop_motion":
+                return {"answer": "已收到停止请求。", "command": command}
+            return {"answer": "停止请求没有通过安全校验。"}
         if decision.intent == IntentType.UNKNOWN:
             return {"answer": "抱歉，我没有听清或理解这个请求，请再说一次。"}
 

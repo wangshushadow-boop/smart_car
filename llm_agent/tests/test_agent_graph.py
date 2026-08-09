@@ -110,15 +110,40 @@ class AgentGraphTest(unittest.TestCase):
         self.assertEqual(provider.calls, 1)
         self.assertTrue(result["tool_result"].success)
 
-    def test_action_is_not_executed(self) -> None:
+    def test_relative_motion_becomes_declarative_command(self) -> None:
         model = FakeModel([
-            '{"intent":"action","tool_name":null,"arguments":{},"reason":"要求前进"}'
+            '{"intent":"action","tool_name":"move_relative",'
+            '"arguments":{"distance_m":1.0},"reason":"要求前进一米"}'
         ])
         result = invoke(
-            build_graph(model=model, tts=FakeTts()), make_request("向前走")
+            build_graph(model=model, tts=FakeTts()), make_request("向前一米")
         )
-        self.assertIn("尚未开放", result["answer"])
+        self.assertEqual(result["command"]["action"], "move_relative")
+        self.assertEqual(result["command"]["distance_m"], 1.0)
+        self.assertIn("前进1米", result["answer"])
         self.assertEqual(len(model.requests), 1)
+
+    def test_motion_outside_whitelist_is_rejected(self) -> None:
+        model = FakeModel([
+            '{"intent":"action","tool_name":"move_relative",'
+            '"arguments":{"distance_m":10.0},"reason":"距离越界"}'
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()), make_request("向前十米")
+        )
+        self.assertNotIn("command", result)
+        self.assertIn("安全校验", result["answer"])
+        self.assertFalse(result["tool_result"].success)
+
+    def test_cancel_becomes_stop_command(self) -> None:
+        model = FakeModel([
+            '{"intent":"cancel","tool_name":"stop_motion",'
+            '"arguments":{},"reason":"用户要求停止"}'
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()), make_request("停止")
+        )
+        self.assertEqual(result["command"]["action"], "stop_motion")
 
     def test_request_can_disable_tools(self) -> None:
         model = FakeModel([
