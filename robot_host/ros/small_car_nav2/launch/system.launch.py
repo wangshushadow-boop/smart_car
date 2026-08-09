@@ -59,7 +59,11 @@ def generate_launch_description():
             "polygon_pub_topic": topics["nav_front_stop_polygon"],
             "state_topic": topics["nav_collision_state"],
             "topic": topics["ultrasonic_front"],
-            "topics": f'[{topics["ultrasonic_front"]}]',
+        },
+        # RewrittenYaml 的 param_rewrites 只能生成标量。通过替换列表中的占位值，
+        # 保留 RangeSensorLayer 所要求的 string_array 参数类型。
+        value_rewrites={
+            "__ULTRASONIC_FRONT_TOPIC__": topics["ultrasonic_front"],
         },
         convert_types=True,
     )

@@ -109,7 +109,8 @@ local_costmap:
       plugins: ["range_layer", "inflation_layer"]
       range_layer:
         plugin: "nav2_costmap_2d::RangeSensorLayer"
-        topics: []
+        # launch 使用 value_rewrites 替换列表元素，不能用 param_rewrites 把数组改成字符串。
+        topics: ["__ULTRASONIC_FRONT_TOPIC__"]
         clear_threshold: 0.20
         mark_threshold: 0.80
         clear_on_max_reading: true
@@ -136,7 +137,7 @@ global_costmap:
       plugins: ["range_layer", "inflation_layer"]
       range_layer:
         plugin: "nav2_costmap_2d::RangeSensorLayer"
-        topics: []
+        topics: ["__ULTRASONIC_FRONT_TOPIC__"]
         clear_threshold: 0.20
         mark_threshold: 0.80
         clear_on_max_reading: true
