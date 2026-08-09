@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import os
 from typing import Any
 
@@ -21,7 +20,7 @@ class MiniCpmGeneration:
         image_input=True,
         audio_input=True,
         # The service supports video, but ModelRequest does not expose it yet.
-        video_input=False,
+        video_input=True,
         tool_calling=False,
     )
 
@@ -56,17 +55,20 @@ class MiniCpmGeneration:
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         content: list[dict] = [{"type": "text", "text": request.user_prompt}]
-        if request.image_data_url:
+        for image_url in request.image_data_urls:
             content.append(
-                {"type": "image_url", "image_url": {"url": request.image_data_url}}
+                {"type": "image_url", "image_url": {"url": image_url}}
             )
-        if request.speech_wav:
-            encoded = base64.b64encode(request.speech_wav).decode("ascii")
+        for audio_url in request.audio_data_urls:
             content.append(
                 {
                     "type": "audio_url",
-                    "audio_url": {"url": f"data:audio/wav;base64,{encoded}"},
+                    "audio_url": {"url": audio_url},
                 }
+            )
+        for video_url in request.video_data_urls:
+            content.append(
+                {"type": "video_url", "video_url": {"url": video_url}}
             )
         try:
             result = self._client.chat.completions.create(

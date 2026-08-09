@@ -12,8 +12,8 @@ from llm_agent.models.types import SpeechRequest
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", help="piper, minicpm, minimax, or auto")
-    parser.add_argument("--text", default="原生语音接口测试")
+    parser.add_argument("--provider", help="piper, minimax, or auto")
+    parser.add_argument("--text", default="语音接口测试")
     parser.add_argument("--output", type=Path, help="optional WAV output path")
     arguments = parser.parse_args()
 

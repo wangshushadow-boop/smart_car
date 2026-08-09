@@ -72,6 +72,42 @@ void RecoverPcm(snd_pcm_t* handle, int result, const char* operation) {
   CheckAlsa(snd_pcm_recover(handle, result, 1), operation);
 }
 
+void ReadInterleaved(snd_pcm_t* handle, const AudioConfig& config,
+                     std::uint8_t* data, std::size_t frame_count) {
+  std::size_t completed = 0;
+  const std::size_t bytes_per_frame =
+      static_cast<std::size_t>(config.channels) * sizeof(PcmSample);
+  while (completed < frame_count) {
+    const auto remaining =
+        static_cast<snd_pcm_uframes_t>(frame_count - completed);
+    const snd_pcm_sframes_t result =
+        snd_pcm_readi(handle, data + completed * bytes_per_frame, remaining);
+    if (result < 0) {
+      RecoverPcm(handle, static_cast<int>(result), "snd_pcm_readi");
+      continue;
+    }
+    completed += static_cast<std::size_t>(result);
+  }
+}
+
+void WriteInterleaved(snd_pcm_t* handle, const AudioConfig& config,
+                      const std::uint8_t* data, std::size_t frame_count) {
+  std::size_t completed = 0;
+  const std::size_t bytes_per_frame =
+      static_cast<std::size_t>(config.channels) * sizeof(PcmSample);
+  while (completed < frame_count) {
+    const auto remaining =
+        static_cast<snd_pcm_uframes_t>(frame_count - completed);
+    const snd_pcm_sframes_t result =
+        snd_pcm_writei(handle, data + completed * bytes_per_frame, remaining);
+    if (result < 0) {
+      RecoverPcm(handle, static_cast<int>(result), "snd_pcm_writei");
+      continue;
+    }
+    completed += static_cast<std::size_t>(result);
+  }
+}
+
 }  // namespace
 
 class AudioCapture::Impl {
@@ -96,19 +132,15 @@ void AudioCapture::ReadFrames(PcmSample* samples, std::size_t frame_count) {
     throw std::invalid_argument("capture destination is null");
   }
 
-  std::size_t completed = 0;
-  while (completed < frame_count) {
-    const auto remaining = static_cast<snd_pcm_uframes_t>(frame_count - completed);
-    PcmSample* destination =
-        samples + completed * static_cast<std::size_t>(impl_->config.channels);
-    const snd_pcm_sframes_t result =
-        snd_pcm_readi(impl_->handle, destination, remaining);
-    if (result < 0) {
-      RecoverPcm(impl_->handle, static_cast<int>(result), "snd_pcm_readi");
-      continue;
-    }
-    completed += static_cast<std::size_t>(result);
+  ReadInterleaved(impl_->handle, impl_->config,
+                  reinterpret_cast<std::uint8_t*>(samples), frame_count);
+}
+
+void AudioCapture::ReadBytes(std::uint8_t* data, std::size_t frame_count) {
+  if (data == nullptr && frame_count != 0) {
+    throw std::invalid_argument("capture byte destination is null");
   }
+  ReadInterleaved(impl_->handle, impl_->config, data, frame_count);
 }
 
 const AudioConfig& AudioCapture::config() const { return impl_->config; }
@@ -136,19 +168,21 @@ void AudioPlayback::WriteFrames(const PcmSample* samples,
     throw std::invalid_argument("playback source is null");
   }
 
-  std::size_t completed = 0;
-  while (completed < frame_count) {
-    const auto remaining = static_cast<snd_pcm_uframes_t>(frame_count - completed);
-    const PcmSample* source =
-        samples + completed * static_cast<std::size_t>(impl_->config.channels);
-    const snd_pcm_sframes_t result =
-        snd_pcm_writei(impl_->handle, source, remaining);
-    if (result < 0) {
-      RecoverPcm(impl_->handle, static_cast<int>(result), "snd_pcm_writei");
-      continue;
-    }
-    completed += static_cast<std::size_t>(result);
+  WriteInterleaved(impl_->handle, impl_->config,
+                   reinterpret_cast<const std::uint8_t*>(samples), frame_count);
+}
+
+void AudioPlayback::WriteBytes(const std::uint8_t* data,
+                               std::size_t frame_count) {
+  if (data == nullptr && frame_count != 0) {
+    throw std::invalid_argument("playback byte source is null");
   }
+  WriteInterleaved(impl_->handle, impl_->config, data, frame_count);
+}
+
+void AudioPlayback::Stop() {
+  CheckAlsa(snd_pcm_drop(impl_->handle), "snd_pcm_drop");
+  CheckAlsa(snd_pcm_prepare(impl_->handle), "snd_pcm_prepare");
 }
 
 void AudioPlayback::Drain() {

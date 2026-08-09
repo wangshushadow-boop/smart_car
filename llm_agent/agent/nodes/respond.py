@@ -8,12 +8,16 @@ from llm_agent.agent.state import IntentType
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.models.response_parser import sanitize_spoken_answer
 from llm_agent.models.types import ModelRequest, SpeechRequest
+from llm_agent.runtime.contracts import ContentType
 
-from .common import event_inputs
+from .common import request_inputs
 
 
 def create_response_node(model: ModelBackend, prompts: PromptSet):
     def respond(state: dict) -> dict:
+        progress = state.get("progress_callback")
+        if progress:
+            progress("generating", 65, "正在生成最终回复")
         decision = state["intent"]
         if decision.intent == IntentType.ACTION:
             return {"answer": "当前版本尚未开放车辆动作控制。"}
@@ -22,8 +26,8 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
         if decision.intent == IntentType.UNKNOWN:
             return {"answer": "抱歉，我没有听清或理解这个请求，请再说一次。"}
 
-        event = state["event"]
-        text, speech_wav, image_data_url = event_inputs(event)
+        request = state["request"]
+        text, audio_urls, image_urls, video_urls = request_inputs(request)
         context = [prompts.response, prompts.safety]
         if text:
             context.append(f"用户文字：{text}")
@@ -37,8 +41,9 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
                 ModelRequest(
                     system_prompt=prompts.system,
                     user_prompt="\n\n".join(context),
-                    speech_wav=speech_wav,
-                    image_data_url=image_data_url,
+                    audio_data_urls=audio_urls,
+                    image_data_urls=image_urls,
+                    video_data_urls=video_urls,
                     max_tokens=256,
                     temperature=0.2,
                 )
@@ -61,6 +66,12 @@ def create_speech_node(tts: SpeechSynthesizer):
         answer = state.get("answer", "")
         if not answer:
             return {}
+        request = state["request"]
+        if ContentType.AUDIO not in request.response_modalities:
+            return {}
+        progress = state.get("progress_callback")
+        if progress:
+            progress("synthesizing", 85, "正在生成语音输出")
         try:
             response = tts.synthesize(SpeechRequest(text=answer))
             return {
@@ -68,7 +79,7 @@ def create_speech_node(tts: SpeechSynthesizer):
                 "speech_backend": response.provider,
             }
         except Exception as error:
-            # Text remains usable even if the independent speech backend fails.
+            # 独立语音后端失败时仍保留文字结果，避免整轮请求被判定为无响应。
             return {"error": f"语音合成失败：{error}"}
 
     return synthesize_speech

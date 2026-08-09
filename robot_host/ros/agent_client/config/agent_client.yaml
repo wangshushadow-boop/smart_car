@@ -1,0 +1,12 @@
+car_agent_client:
+  ros__parameters:
+    audio_device: plughw:CARD=USB,DEV=0
+    playback_device: plughw:CARD=USB,DEV=0
+    sample_rate: 16000
+    channels: 1
+    period_frames: 320
+    vad_energy_threshold: 500
+    vad_min_speech_ms: 300
+    vad_silence_ms: 600
+    vad_preroll_ms: 500
+    max_speech_seconds: 15

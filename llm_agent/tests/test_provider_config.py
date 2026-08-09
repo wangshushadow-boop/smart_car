@@ -6,7 +6,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from llm_agent.app.config import load_agent_config
-from llm_agent.models.registry import ProviderRegistry, select_backends
+from llm_agent.models.registry import (
+    ProviderRegistry,
+    create_default_registry,
+    select_backends,
+)
 from llm_agent.models.types import ModelResponse, SpeechResponse
 
 
@@ -61,6 +65,10 @@ providers: {}
             config = self._config(config_text)
         self.assertEqual(config.generation.provider, "minimax")
         self.assertEqual(config.speech.provider, "auto")
+
+    def test_default_registry_does_not_expose_unsafe_minicpm_speech(self) -> None:
+        registry = create_default_registry()
+        self.assertFalse(registry.has_speech("minicpm"))
 
     def test_auto_uses_same_provider_then_fallback(self) -> None:
         config = self._config(
@@ -128,6 +136,24 @@ providers: {}
         registry.register_speech(
             "cloud", lambda settings: (_ for _ in ()).throw(RuntimeError("no key"))
         )
+        registry.register_speech("piper", lambda settings: FakeSpeech("piper"))
+        _, speech = select_backends(config, registry)
+        self.assertEqual(speech.provider_name, "piper")
+
+    def test_auto_uses_fallback_when_generation_has_no_speech_backend(self) -> None:
+        config = self._config(
+            """
+generation:
+  provider: local
+speech:
+  provider: auto
+  preferred: same_provider
+  fallback: piper
+providers: {}
+"""
+        )
+        registry = ProviderRegistry()
+        registry.register_generation("local", lambda settings: FakeGeneration())
         registry.register_speech("piper", lambda settings: FakeSpeech("piper"))
         _, speech = select_backends(config, registry)
         self.assertEqual(speech.provider_name, "piper")

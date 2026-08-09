@@ -16,12 +16,12 @@ SpeechBackend     接收最终文本并返回标准 WAV
 
 | Provider | 文本生成 | 图像输入 | 音频输入 | 语音输出 |
 | --- | ---: | ---: | ---: | ---: |
-| `minicpm` | 是 | 是 | 是 | 本地 Omni WAV |
+| `minicpm` | 是 | 是 | 是 | 否（当前服务无安全的独立 TTS） |
 | `minimax` | 是 | 否 | 否 | 云端 T2A WAV |
 | `piper` | 不适用 | 不适用 | 不适用 | 本地 WAV |
 
-MiniMax 的 OpenAI 兼容文本接口当前不接受图像或音频。选择 `generation.provider=minimax` 后，文本事件
-可以正常工作；直接把 `SpeechFinished` 的 WAV 交给它会在发出网络请求前被拒绝。完整的云端语音对话
+MiniMax 的 OpenAI 兼容文本接口当前不接受图像、音频或视频。选择 `generation.provider=minimax` 后，
+纯文本请求可以正常工作；包含不支持模态的统一请求会在发出网络请求前被拒绝。完整的云端语音对话
 还需要后续增加 ASR/转写 provider，或由本地 MiniCPM 先产生转写。
 
 ## 配置
@@ -40,9 +40,13 @@ speech:
 
 语音选择规则：
 
-- `piper`、`minicpm`、`minimax`：严格使用指定 provider，失败时保留文本并报告 TTS 错误；
+- `piper`、`minimax`：严格使用指定 provider，失败时保留文本并报告 TTS 错误；
 - `native` 或 `same_provider`：严格使用 generation provider 的语音能力；
 - `auto`：优先 `preferred`，不可创建或合成失败时使用 `fallback`。
+
+当 generation provider 为 MiniCPM 时，`same_provider` 没有对应的独立语音后端：`auto` 会直接选择
+Piper；显式设置 `speech.provider=minicpm`、`native` 或 `same_provider` 会在启动时安全报错，不会向
+Omni Talker 发出请求。
 
 环境变量覆盖：
 
@@ -61,7 +65,7 @@ export MINIMAX_API_KEY='请替换为真实密钥'
 
 ```bash
 /opt/minicpm-service/venv/bin/python -m llm_agent.scripts.test_speech_provider \
-  --provider minicpm
+  --provider piper
 ```
 
 增加 `--output /tmp/speech.wav` 可以保存测试 WAV；不指定时只在内存中验证并打印格式信息。
@@ -69,7 +73,7 @@ export MINIMAX_API_KEY='请替换为真实密钥'
 常用组合：
 
 ```yaml
-# 本地多模态 + 本地原生语音，失败回退 Piper
+# 本地多模态 + Piper 本地语音
 generation: {provider: minicpm}
 speech: {provider: auto, preferred: same_provider, fallback: piper}
 ```

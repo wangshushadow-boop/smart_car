@@ -43,10 +43,12 @@ class MiniMaxGeneration:
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         unsupported = []
-        if request.image_data_url:
+        if request.image_data_urls:
             unsupported.append("image")
-        if request.speech_wav:
+        if request.audio_data_urls:
             unsupported.append("audio")
+        if request.video_data_urls:
+            unsupported.append("video")
         if unsupported:
             names = ", ".join(unsupported)
             raise ValueError(

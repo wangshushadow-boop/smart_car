@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>全模态 Agent 调试台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>SMART CAR · ROS ACTION CLIENT</p>
+        <h1>全模态 Agent 调试台</h1>
+        <span>独立 Debug Gateway</span>
+      </header>
+      <form id="agentForm">
+        <label for="prompt">文本输入</label>
+        <textarea id="prompt" maxlength="4000" rows="5" placeholder="请输入问题，也可以只上传媒体。"></textarea>
+        <label for="media">音频、图片或视频</label>
+        <input id="media" type="file" accept="audio/*,image/*,video/*" multiple />
+        <div class="options">
+          <label><input id="audioOutput" type="checkbox" /> 返回语音</label>
+          <label><input id="allowTools" type="checkbox" checked /> 允许白名单工具</label>
+        </div>
+        <button id="submitButton" type="submit">发送统一请求</button>
+      </form>
+      <section>
+        <div class="result-title"><strong>RESPONSE</strong><span id="status">等待请求</span></div>
+        <pre id="answer">Agent 的输出会显示在这里。</pre>
+        <audio id="audio" controls hidden></audio>
+        <div id="metadata"></div>
+        <p id="error" class="error"></p>
+      </section>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

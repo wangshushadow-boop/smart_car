@@ -3,11 +3,17 @@ generation:
   provider: minicpm
 
 speech:
-  # auto: prefer the generation provider's speech capability, then use fallback.
-  # Other choices: piper, minicpm, minimax, native, same_provider.
+  # auto: prefer the generation provider's standalone speech capability, then use fallback.
+  # MiniCPM-o does not expose safe standalone TTS in the current vLLM-Omni service,
+  # so the default MiniCPM generation configuration resolves to Piper.
+  # Other choices: piper, minimax, native, same_provider.
   provider: auto
   preferred: same_provider
   fallback: piper
+
+runtime:
+  # 防止调用方把过大的媒体直接塞入 DDS Action Goal。
+  max_inline_bytes: 67108864
 
 providers:
   minicpm:
@@ -15,8 +21,6 @@ providers:
     model: /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
     timeout_seconds: 90
     max_retries: 1
-    speech_endpoint: ws://127.0.0.1:8099/v1/audio/speech/stream
-    speech_timeout_seconds: 60
 
   minimax:
     base_url: https://api.minimax.io/v1

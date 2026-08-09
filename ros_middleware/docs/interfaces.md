@@ -2,14 +2,25 @@
 
 共享接口定义位于 `src/small_car_interfaces`。发布者和订阅者的业务实现分别保留在 `robot_host`、`llm_agent` 等所属工程。
 
-`src/small_car_interfaces/config/interfaces.yaml` 是 topic 名、消息类型和 QoS 的唯一事实源；它会随 `small_car_interfaces` 安装。树莓派 launch 与 WSL Agent 都直接读取该文件，禁止在两端重复硬编码跨工程 topic 名。
+`src/small_car_interfaces/config/interfaces.yaml` 是 topic 和 action 名称、消息类型及 QoS 的唯一事实源；
+它会随 `small_car_interfaces` 安装。树莓派、WSL Agent 和 Web Debug 都读取该文件。
+
+## Action
+
+| 名称 | 类型 | 约定 |
+| --- | --- | --- |
+| `/car/agent/run` | `small_car_interfaces/action/RunAgent` | Web 和树莓派访问 Agent 的唯一全模态业务接口 |
+
+Goal 使用 `AgentRequest`，Feedback 使用 `AgentProgress`，Result 使用 `AgentResponse`。输入和输出均由
+`AgentContent[]` 表达文本、音频、图片、视频或 JSON。旧的 Agent 文本输入输出 topic 已删除。
 
 ## Topic
 
 | 名称 | 类型 | 约定 |
 | --- | --- | --- |
-| `/car/audio/input` | `small_car_interfaces/msg/AudioFrame` | 麦克风 PCM 音频帧 |
-| `/car/audio/output` | `small_car_interfaces/msg/AudioFrame` | Agent 发送至车载扬声器的 PCM 音频帧 |
 | `/car/camera/image/compressed` | `sensor_msgs/msg/CompressedImage` | 压缩相机图像 |
+
+树莓派音频采集、VAD 缓冲和播放属于 `agent_client` 进程内部实现，通过 `robot_host/core` 的 ALSA
+接口直接读写设备，不定义共享音频 Topic。完整 WAV 只在一次 `/car/agent/run` Action 请求或响应的边界传输。
 
 新增接口时优先使用 ROS 标准消息。新增或修改接口时，先更新 YAML，再更新本表中单位、坐标系、QoS、频率和超时语义。

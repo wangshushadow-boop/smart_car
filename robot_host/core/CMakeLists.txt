@@ -45,6 +45,14 @@ if(ROBOT_HOST_BUILD_TESTS AND ROBOT_HOST_BUILD_CORE)
   target_link_libraries(module_test PRIVATE robot_host_core)
   add_test(NAME module_test COMMAND module_test)
 
+  add_executable(ring_buffer_test
+    small_car_base/buffer/ring_buffer_test.cpp
+  )
+  target_include_directories(ring_buffer_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  )
+  add_test(NAME ring_buffer_test COMMAND ring_buffer_test)
+
   add_executable(chassis_config_test
     small_car_base/chassis/chassis_config_test.cpp
   )

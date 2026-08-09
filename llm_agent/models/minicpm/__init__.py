@@ -1,6 +1,5 @@
-"""Local MiniCPM-o generation and native speech providers."""
+"""Local MiniCPM-o generation provider."""
 
 from .generation import MiniCpmGeneration, MiniCpmModel
-from .speech import MiniCpmSpeech
 
-__all__ = ["MiniCpmGeneration", "MiniCpmModel", "MiniCpmSpeech"]
+__all__ = ["MiniCpmGeneration", "MiniCpmModel"]

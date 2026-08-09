@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from llm_agent.models.minimax.generation import MiniMaxGeneration
 from llm_agent.models.minimax.speech import MiniMaxSpeech
-from llm_agent.models.minicpm.speech import MiniCpmSpeech
+from llm_agent.models.minicpm.generation import MiniCpmGeneration
 from llm_agent.models.types import ModelRequest, SpeechRequest
 
 
@@ -51,41 +51,24 @@ class FakeHttpResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
-class FakeWebSocket:
-    def __init__(self, wav: bytes) -> None:
-        self.sent = []
-        self.messages = iter(
-            [wav, json.dumps({"type": "session.done"})]
-        )
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, traceback):
-        return False
-
-    def send(self, message) -> None:
-        self.sent.append(json.loads(message))
-
-    def recv(self, timeout):
-        return next(self.messages)
-
-
 class ModelProvidersTest(unittest.TestCase):
-    def test_minicpm_native_speech_uses_final_text(self) -> None:
-        websocket = FakeWebSocket(make_wav())
-
-        def connector(*args, **kwargs):
-            return websocket
-
-        response = MiniCpmSpeech(connector=connector).synthesize(
-            SpeechRequest(text="最终回答")
+    def test_minicpm_maps_all_input_modalities(self) -> None:
+        client = FakeOpenAiClient()
+        model = MiniCpmGeneration(client=client)
+        model.complete(
+            ModelRequest(
+                system_prompt="system",
+                user_prompt="hello",
+                audio_data_urls=["data:audio/wav;base64,d2F2"],
+                image_data_urls=["data:image/jpeg;base64,anBn"],
+                video_data_urls=["data:video/mp4;base64,bXA0"],
+            )
         )
-        self.assertEqual(response.provider, "minicpm")
-        text_event = next(
-            item for item in websocket.sent if item.get("type") == "input.text"
+        content = client.chat.completions.arguments["messages"][1]["content"]
+        self.assertEqual(
+            [part["type"] for part in content],
+            ["text", "image_url", "audio_url", "video_url"],
         )
-        self.assertEqual(text_event["text"], "最终回答")
 
     def test_minimax_generation_uses_provider_specific_parameters(self) -> None:
         client = FakeOpenAiClient()
@@ -109,7 +92,7 @@ class ModelProvidersTest(unittest.TestCase):
                 ModelRequest(
                     system_prompt="system",
                     user_prompt="hello",
-                    speech_wav=b"wav",
+                    audio_data_urls=["data:audio/wav;base64,d2F2"],
                 )
             )
 

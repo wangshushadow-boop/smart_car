@@ -18,7 +18,9 @@ test -e /dev/snd
 test -e /dev/video0
 ```
 
-设备路径变化时，修改 `ros_middleware/docker/compose.yaml` 和 `robot_host/ros/small_car_av/launch/pi_av.launch.py`。
+设备路径变化时，修改 `ros_middleware/docker/compose.yaml` 和
+`robot_host/ros/agent_client/config/agent_client.yaml`；摄像头参数位于
+`robot_host/ros/agent_client/launch/agent_client.launch.py`。
 
 ## 一键刷新
 
@@ -37,7 +39,8 @@ test -e /dev/video0
   -RemoteWorkspace /home/ubuntu/small_car_f407
 ```
 
-脚本会上传 `robot_host` 与 `ros_middleware`、编译并测试核心库、重建 ROS 工作区、启动容器，并检查 `/small_car_base` 和 `/car/audio/input`。
+脚本会上传 `robot_host` 与 `ros_middleware`、编译并测试核心库、重建 ROS 工作区、启动容器，并检查
+`/small_car_base`、`/car_agent_client` 和 `/car/camera/image/compressed`。
 
 ## 手动启动
 
@@ -65,7 +68,9 @@ docker compose exec small_car_ros2 bash -lc '
   ros2 node list
   ros2 topic list
   ros2 topic hz /wheel/odom_raw
-  ros2 topic hz /car/audio/input
+  ros2 node info /car_agent_client
+  ros2 topic hz /car/camera/image/compressed
+  ros2 action info /car/agent/run
   ros2 topic echo /diagnostics --once
 '
 ```

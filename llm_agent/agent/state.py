@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .events import AgentEvent
+from llm_agent.runtime.contracts import RuntimeRequest
 
 
 class IntentType(str, Enum):
@@ -29,7 +29,9 @@ class IntentDecision(BaseModel):
 
 class AgentState(TypedDict, total=False):
     request_id: str
-    event: AgentEvent
+    request: RuntimeRequest
+    cancel_token: object
+    progress_callback: object
     intent: IntentDecision
     tool_call: object
     tool_result: object

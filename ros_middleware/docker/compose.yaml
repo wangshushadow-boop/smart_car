@@ -41,7 +41,7 @@ services:
       --cmake-clean-cache
       --symlink-install &&
       source robot_host/install-ros/setup.bash &&
-      { ros2 launch small_car_av pi_av.launch.py &
+      { ros2 launch agent_client agent_client.launch.py &
       exec ros2 launch small_car_nav2 system.launch.py; }"
     logging:
       driver: local

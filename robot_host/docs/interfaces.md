@@ -10,7 +10,6 @@ Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 | --- | --- | --- | --- |
 | 输入 | `/cmd_vel` | `geometry_msgs/msg/TwistStamped` | `linear.x` m/s，`angular.z` rad/s |
 | 输入 | `/servo_controller/joint_trajectory` | `trajectory_msgs/msg/JointTrajectory` | 云台关节目标 |
-| 输入 | `/car/audio/output` | `small_car_interfaces/msg/AudioFrame` | PCM 播放数据，Reliable QoS |
 | 输出 | `/wheel/odom_raw` | `nav_msgs/msg/Odometry` | 未融合轮式里程计 |
 | 输出 | `/imu/data_raw` | `sensor_msgs/msg/Imu` | MCU 原始 IMU 换算值 |
 | 输出 | `/odom` | `nav_msgs/msg/Odometry` | EKF 融合结果 |
@@ -20,24 +19,29 @@ Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 | 输出 | `/car/camera/image_raw` | `sensor_msgs/msg/Image` | 640×480 RGB8 原始图像 |
 | 输出 | `/car/camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 相机信息 |
 | 输出 | `/car/camera/image/compressed` | `sensor_msgs/msg/CompressedImage` | JPEG 压缩图像 |
-| 输出 | `/car/audio/input` | `small_car_interfaces/msg/AudioFrame` | 默认 16 kHz、单声道、PCM S16LE |
 
-当前没有自定义 service 或 action。Nav2 使用其标准 action、service 和 lifecycle 接口。
+## Agent Action
 
-## 音频消息
+树莓派和 Web 使用同一个自定义 Action：
 
-`AudioFrame`：
+| Action | 类型 | 说明 |
+| --- | --- | --- |
+| `/car/agent/run` | `small_car_interfaces/action/RunAgent` | 统一文本、音频、图片、视频输入输出 |
 
-| 字段 | 含义 |
-| --- | --- |
-| `header` | 首个采样点的时间与来源 |
-| `sample_rate` | 采样率，Hz |
-| `channels` | 声道数 |
-| `encoding` | 当前支持 `pcm_s16le` |
-| `frame_samples` | 每声道采样点数 |
-| `data` | 按声道交错的 PCM 字节 |
+`agent_client/car_agent_client` 在树莓派侧把 VAD 完成的 WAV 和最近 JPEG 组成 Goal，并处理返回的
+文字和 WAV。Web Debug 也只使用同一个 Action，因此调试代码不进入 Agent 或树莓派客户端。
 
-有效数据长度必须等于 `frame_samples × channels × 2`。
+## 树莓派音频数据路径
+
+音频不再通过 ROS Topic 逐帧传输。`agent_client` 直接调用 `core/small_car_base/audio` 访问 ALSA：
+
+- 空闲时只维护固定容量的预录环形缓冲；
+- VAD 触发后直接写入 `agent_client` 自己预分配的 WAV 缓冲；
+- 提交 Goal 时移动缓冲所有权，不在业务层复制整段语音；
+- Action 返回的 WAV 直接交给 ALSA 播放，不再发布中间音频 Topic。
+
+相机仍以 `sensor_msgs/msg/CompressedImage` 接入，客户端保存最新消息的所有权，并在组装 Goal 时移动 JPEG
+字节。DDS 序列化/反序列化和跨机器网络传输产生的边界复制不可避免，但树莓派业务进程内不重复复制大媒体。
 
 ## 坐标系
 
@@ -68,6 +72,8 @@ ros2 topic info /cmd_vel -v
 ros2 topic echo /odom --once
 ros2 topic echo /imu/data_raw --once
 ros2 topic echo /diagnostics --once
-ros2 topic hz /car/audio/input
+ros2 node info /car_agent_client
+ros2 topic hz /car/camera/image/compressed
+ros2 action info /car/agent/run
 ros2 run tf2_ros tf2_echo odom base_link
 ```

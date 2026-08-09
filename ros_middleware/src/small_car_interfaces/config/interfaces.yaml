@@ -23,7 +23,16 @@
 # - publisher/subscribers：逻辑发布者和订阅者，用于明确模块边界。
 # - rate_hz：预期发布频率；timeout_ms：消费者允许的最大命令新鲜度。
 
-version: 1
+version: 2
+
+actions:
+  # Web、树莓派和其他调用方访问 Agent 的唯一全模态业务接口。
+  # Goal、Feedback 和 Result 分别承载统一请求、进度和统一响应。
+  agent_run:
+    name: /car/agent/run
+    type: small_car_interfaces/action/RunAgent
+    server: llm_agent
+    clients: [robot_host/agent_client, agent_debug_web]
 
 topics:
   # Nav2 碰撞监控最终输出的底盘速度命令。
@@ -158,56 +167,26 @@ topics:
     qos: default
     publisher: nav2/collision_monitor
 
-  # Jabra 麦克风采集的 PCM 输入。AudioFrame 使用 pcm_s16le、16 kHz、单声道，
-  # 每帧 320 个采样（20 ms）；允许丢帧以降低端到端语音延迟。
-  audio_input:
-    name: /car/audio/input
-    type: small_car_interfaces/msg/AudioFrame
-    qos: sensor_data
-    publisher: robot_host/small_car_av
-    subscribers: [llm_agent]
-    rate_hz: 50
-
-  # Agent 合成后下发到 Jabra 扬声器的 PCM 数据。
-  # 使用可靠 QoS，避免语音帧静默丢失；数据长度必须为
-  # frame_samples × channels × 2 字节。
-  audio_output:
-    name: /car/audio/output
-    type: small_car_interfaces/msg/AudioFrame
-    qos: reliable
-    publisher: llm_agent
-    subscribers: [robot_host/small_car_av]
-
-  # Agent 检测到新的真实人声时发布一次 Empty，要求树莓派立即停止当前 TTS。
-  # 这是播放控制信号而不是音频数据：播放器收到后清空尚未播放的队列并终止 aplay。
-  # 通过该 topic 实现打断（barge-in），使麦克风在播报过程中始终可用。
-  audio_playback_stop:
-    name: /car/audio/playback_stop
-    type: std_msgs/msg/Empty
-    qos: reliable
-    publisher: llm_agent
-    subscribers: [robot_host/small_car_av]
-
   # USB 摄像头的原始 RGB8 图像。该 topic 主要供树莓派侧图像转换使用，
   # 跨机器消费者应订阅压缩图像而不是原始图像。
   camera_image_raw:
     name: /car/camera/image_raw
     type: sensor_msgs/msg/Image
     qos: sensor_data
-    publisher: robot_host/small_car_av
+    publisher: robot_host/agent_client
 
   # 与原始图像同步的相机内参和畸变模型。当前由 v4l2_camera 发布。
   camera_info:
     name: /car/camera/camera_info
     type: sensor_msgs/msg/CameraInfo
     qos: sensor_data
-    publisher: robot_host/small_car_av
+    publisher: robot_host/agent_client
 
-  # JPEG 压缩图像，供 WSL Agent 缓存最近画面并随语音输入送入模型。
-  # 压缩质量由 small_car_av launch 控制；允许丢帧以避免网络回压。
+  # JPEG 压缩图像，供树莓派 Agent Client 缓存最近画面并组成统一请求。
+  # 压缩质量由 agent_client launch 控制；允许丢帧以避免网络回压。
   camera_image_compressed:
     name: /car/camera/image/compressed
     type: sensor_msgs/msg/CompressedImage
     qos: sensor_data
-    publisher: robot_host/small_car_av
-    subscribers: [llm_agent]
+    publisher: robot_host/agent_client
+    subscribers: [robot_host/agent_client]

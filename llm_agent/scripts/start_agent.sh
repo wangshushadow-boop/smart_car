@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 启动事件驱动的小车 Agent：ROS 音视频输入 → LangGraph → MiniCPM-o。
+# 启动统一全模态 ROS Action Server：ROS Action → Runtime → 模型。
 set -eo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source /opt/ros/kilted/setup.bash
@@ -17,4 +17,4 @@ export NO_PROXY="127.0.0.1,localhost"
 export no_proxy="127.0.0.1,localhost"
 agent_python="/opt/minicpm-service/venv/bin/python"
 "${agent_python}" -c 'import yaml; from ament_index_python.packages import get_package_share_directory'
-exec "${agent_python}" -m llm_agent.agent.run_agent
+exec "${agent_python}" -m llm_agent.app.run_agent

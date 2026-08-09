@@ -1,22 +1,23 @@
 # Agent 核心
 
-本目录只负责事件、状态、LangGraph 编排和运行生命周期，不实现 ROS 采集、模型传输或 TTS。
+本目录只负责状态和 LangGraph 业务编排，不实现 Runtime 生命周期、ROS、设备采集或 Web Debug。
 
 | 路径 | 职责 |
 | --- | --- |
-| `events.py` | Agent 接收的强类型事件和旧字典事件兼容转换 |
 | `state.py` | LangGraph 单轮状态、意图类型和结构化意图结果 |
-| `runtime.py` | 串行执行、停止信号和图调用边界 |
 | `graph.py` | 意图识别、工具白名单检查、执行、回复和 TTS 的流程编排 |
 | `nodes/` | 各个职责单一的 LangGraph 节点 |
 | `prompt_loader.py` | 加载仓库内版本化提示词 |
 
 其他边界：
 
-- `llm_agent/models` 封装本地/云端推理、原生语音、能力声明和 provider 选择；
+- `llm_agent/runtime` 定义统一全模态请求、响应、进度、取消和执行生命周期；
+- `llm_agent/transport/ros` 提供唯一的 `RunAgent` Action Server；
+- `llm_agent/models` 封装本地/云端推理、语音、能力声明和 provider 选择；
 - `llm_agent/tools` 定义强类型白名单工具；
 - `llm_agent/adapters/audio` 封装独立 TTS；
-- `llm_agent/input` 继续负责 ROS 音视频聚合、VAD 和回声抑制，后续再渐进拆分。
+- 树莓派 `robot_host/ros/agent_client` 负责 VAD、画面聚合和硬件播放；
+- 仓库顶层 `agent_debug_web` 是完全独立的 Action Client。
 
 当前仅开放只读的 `get_robot_status` 工具。在 ROS 状态网关实现前，它会明确返回不可用；车辆动作工具尚未开放。
 详细设计见[Agent 架构](../docs/architecture.md)、[模型 Provider](../docs/model_providers.md)、

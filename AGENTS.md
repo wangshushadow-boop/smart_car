@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This workspace contains four cooperating components:
+This workspace contains five cooperating components:
 
 - `small_car_f407/` is the STM32F407 firmware. Application code lives under
   `Core/Modules/<Area>/{Inc,Src}`; CubeMX startup and peripheral code is in
@@ -15,6 +15,9 @@ This workspace contains four cooperating components:
   container environment. It must not contain business nodes or launch files.
 - `llm_agent/` owns model serving and Agent behavior and communicates through
   the interfaces defined by `ros_middleware/`.
+- `agent_debug_web/` is an independent ROS Action client for browser-based
+  multimodal debugging. It must not import Agent runtime, graph, model, tool,
+  or speech implementation modules.
 
 Keep protocol changes synchronized between `Core/Modules/Comm` and
 `robot_host/core/small_car_base/protocol`.

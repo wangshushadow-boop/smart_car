@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from threading import Event
-
 from langgraph.graph import END, START, StateGraph
 
 from llm_agent.adapters.audio.tts import PiperSpeech, SpeechSynthesizer
@@ -29,12 +27,10 @@ def build_graph(
     registry: ToolRegistry | None = None,
     prompts: PromptSet | None = None,
     status_provider: RobotStatusProvider | None = None,
-    cancelled: Event | None = None,
 ):
     model = model or MiniCpmModel()
     tts = tts or PiperSpeech()
     prompts = prompts or load_prompts()
-    cancelled = cancelled or Event()
     if registry is None:
         registry = ToolRegistry()
         registry.register(GetRobotStatusTool(status_provider))
@@ -42,7 +38,7 @@ def build_graph(
     graph = StateGraph(AgentState)
     graph.add_node("understand_intent", create_understand_node(model, prompts))
     graph.add_node("safety_check", create_safety_check_node(registry))
-    graph.add_node("execute_tool", create_execute_tool_node(registry, cancelled))
+    graph.add_node("execute_tool", create_execute_tool_node(registry))
     graph.add_node("generate_response", create_response_node(model, prompts))
     graph.add_node("synthesize_speech", create_speech_node(tts))
 

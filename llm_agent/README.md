@@ -140,13 +140,15 @@ generation:
   provider: minicpm       # minicpm | minimax
 
 speech:
-  provider: auto          # auto | native | same_provider | piper | minicpm | minimax
+  provider: auto          # auto | native | same_provider | piper | minimax
   preferred: same_provider
   fallback: piper
 ```
 
-`auto` 优先使用推理 provider 的原生语音，创建失败或合成失败时回退 Piper；显式指定 provider 时不会
-静默回退。可用 `CAR_GENERATION_PROVIDER`、`CAR_SPEECH_PROVIDER` 临时覆盖选择。MiniMax 云端能力需要：
+`auto` 优先使用推理 provider 已注册的独立语音能力，没有时直接使用 Piper。当前 MiniCPM-o 的
+vLLM-Omni 服务没有安全的独立 TTS 接口，因此默认组合是 MiniCPM 推理 + Piper；MiniMax 仍可同时
+提供云端文本和云端语音。显式指定 provider 时不会静默回退。可用 `CAR_GENERATION_PROVIDER`、
+`CAR_SPEECH_PROVIDER` 临时覆盖选择。MiniMax 云端能力需要：
 
 ```bash
 export MINIMAX_API_KEY='请替换为云端密钥'
@@ -156,12 +158,13 @@ export MINIMAX_API_KEY='请替换为云端密钥'
 
 ```text
 llm_agent/
-├── app/            # 应用装配和 ROS 进程入口
-├── agent/          # 事件、状态、LangGraph 编排和运行时
+├── app/            # 配置和统一 ROS Action Server 进程入口
+├── runtime/        # 与 ROS、Web、设备无关的全模态执行核心
+├── transport/ros/  # RunAgent Action Server 和类型转换
+├── agent/          # 状态、LangGraph 编排和业务节点
 ├── models/         # MiniCPM-o 后端及输出解析
 ├── tools/          # 强类型白名单工具和统一执行注册表
 ├── adapters/audio/ # Piper TTS 等外部音频适配
-├── input/          # ROS 音视频聚合、VAD 和回声抑制
 ├── prompts/        # 版本化系统、意图、回复和安全提示词
 ├── config/         # 不含密钥的配置模板
 ├── docs/           # 架构、接口、部署和运行文档
@@ -170,13 +173,17 @@ llm_agent/
 
 不要把真实 API 密钥提交到 Git。后续启用鉴权时可使用本地 `.env` 文件，并把它加入 `.gitignore`。
 
-当前 Agent 输入在 `llm_agent/input`：它直接订阅树莓派发布的
-`/car/audio/input` 和 `/car/camera/image/compressed`，在 WSL 内完成 VAD 后调用 LangGraph。
+Agent 对外只有 `/car/agent/run` 一个 ROS 2 Action，Goal、Feedback 和 Result 统一支持文本、音频、
+图片、视频和 JSON 内容块。树莓派在设备侧完成 VAD 和相机关键帧聚合，再提交同一个 Action。
+
+调试页面已拆分到仓库顶层独立模块 `agent_debug_web/`。它与树莓派完全一样，只是 `/car/agent/run`
+的客户端，不导入 Runtime、LangGraph、模型、工具或 TTS。启动方法见
+[独立 Web Debug](../agent_debug_web/README.md)。
 
 当前图支持闲聊、车辆状态查询意图、工具白名单校验和独立 TTS。唯一注册的
 `get_robot_status` 是只读工具；ROS 状态网关将在下一阶段接入，在此之前会明确返回不可用。
 车辆移动、导航和任意 ROS topic 发布均未开放。
 
 已验证的语音对话启动、检查和排错步骤见[Agent 语音对话链路](docs/agent_ros_voice_loop.md)。
-内部设计见[Agent 架构](docs/architecture.md)、[模型 Provider](docs/model_providers.md)、
+内部设计见[Agent 架构](docs/architecture.md)、[统一请求与状态](docs/agent_state.md)、[模型 Provider](docs/model_providers.md)、
 [状态与事件](docs/agent_state.md)和[工具契约](docs/tool_contract.md)。

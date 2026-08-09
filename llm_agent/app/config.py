@@ -23,11 +23,18 @@ class SpeechSelection(BaseModel):
     fallback: str = Field(default="piper", min_length=1)
 
 
+class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_inline_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+
+
 class AgentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     generation: GenerationSelection = Field(default_factory=GenerationSelection)
     speech: SpeechSelection = Field(default_factory=SpeechSelection)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     providers: dict[str, dict] = Field(default_factory=dict)
 
 

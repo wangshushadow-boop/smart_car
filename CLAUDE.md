@@ -56,7 +56,7 @@ ROS / Python 代码遵循各包内的 `setup.py` 与 PEP 8 默认。
 - **底盘安全** 是最后一道防线，由 MCU 内的 `control_mux` 仲裁（安全 > 手柄 > 上位机 > 空闲），上位机和 Nav2 都无法绕过它。
 - **MCU 不计算位姿**：底盘节点仅做编码器运动学换算和 IMU SI 单位转换；`robot_localization`（`ekf_filter_node`）融合轮速与 IMU，发布 `/odom`。
 - **Nav2 容器化运行**，底盘/EKF/机器人模型节点独立运行避免重复。
-- **音视频采集** 在 Nav2 容器中通过 `/dev/video0` 和 `/dev/snd` 直通设备，发布 `/car/camera/image/compressed`、`/car/camera/camera_info`、`/car/audio/input`。
+- **音视频交互** 由树莓派 `agent_client` 统一管理：音频通过 `core/audio` 直接访问 ALSA，不经过 ROS 大数据 Topic；摄像头仅发布 `/car/camera/image/compressed` 和 `/car/camera/camera_info`，客户端通过 `/car/agent/run` 调用 Agent。
 - **大模型** 通过 OpenAI 兼容 API（`http://127.0.0.1:8000/v1`，模型 `minicpm-o-4.5-awq`）对外提供，独立于底盘与 ROS。
 
 `protocol/transport/mcu/control/servo/ros` 的分层约束（详见

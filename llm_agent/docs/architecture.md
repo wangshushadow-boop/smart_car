@@ -1,104 +1,78 @@
 # Agent 架构
 
-## 目标与边界
+## 边界
 
-`llm_agent` 是小车的非实时认知与交互层，负责理解用户请求、选择白名单工具并生成回复。它不承担
-电机闭环、避障、急停或底盘实时控制。即使 Agent 给出错误结果，ROS 与 MCU 侧也必须独立保证安全。
-
-当前完成阶段 1～5，形成以下依赖方向：
+`llm_agent` 是 ROS 网络中的统一 Agent 服务端，负责多模态理解、白名单工具、回复生成和可选语音合成。
+它不采集麦克风、不读取摄像头设备、不播放扬声器，也不包含调试网页。
 
 ```text
-ROS 音频/图像
-    ↓
-input：VAD、回声抑制、感知聚合
-    ↓ SpeechFinished / TextReceived
-app：进程装配与生命周期
-    ↓
-agent：LangGraph 决策编排
-    ├──→ models：本地/云端生成、原生语音、能力与 provider 注册
-    ├──→ tools：白名单、参数校验、超时与结果
-    └──→ adapters/audio：Piper TTS
-    ↓
-ROS 音频输出
+树莓派 Agent Client ─┐
+                    ├── /car/agent/run（RunAgent Action）
+独立 Web Debug ─────┘
+                              ↓
+                     transport/ros
+                              ↓
+                         runtime
+                              ↓
+             agent / models / tools / speech
 ```
 
-依赖约束：
-
-- `agent` 不导入 ROS 消息类型，也不直接发布 topic；
-- `models` 只处理模型请求和文本响应，不执行 TTS；
-- `tools` 只执行注册表中显式注册的能力；
-- 提示词不能替代工具参数校验和程序安全检查；
-- 原始 WAV 和图像仅用于当前轮推理，不作为长期记忆保存。
+所有外部调用方使用同一 Action。`AgentRuntime` 只接收纯 Python `RuntimeRequest`，不导入 ROS、HTTP、
+浏览器或设备代码。
 
 ## 目录职责
 
-| 目录 | 当前职责 |
+| 目录 | 职责 |
 | --- | --- |
-| `app/` | 创建运行时和 ROS 输入节点，处理启动与退出 |
-| `agent/` | 标准事件、共享状态、LangGraph、节点和提示词加载 |
-| `models/` | 统一生成/语音接口、能力声明、provider 注册、MiniCPM 与 MiniMax 实现 |
-| `tools/` | 工具协议、执行上下文、注册表和车辆只读工具 |
-| `adapters/audio/` | TTS 协议和 Piper 实现 |
-| `input/` | ROS 音视频订阅、VAD、回声抑制、语音聚合与播放发布 |
-| `prompts/` | 系统、意图、回复和安全提示词 |
-| `tests/` | 图路由、事件、工具、解析和音频单元测试 |
+| `runtime/` | 统一全模态契约、串行执行、取消、进度和响应转换 |
+| `transport/ros/` | `RunAgent` Action Server 以及 ROS/Runtime 类型转换 |
+| `agent/` | LangGraph、共享状态、意图、安全、工具和回复节点 |
+| `models/` | Provider 无关模型接口、能力声明、MiniCPM 和 MiniMax 适配 |
+| `tools/` | 强类型工具协议、白名单和执行超时 |
+| `adapters/audio/` | Piper 等独立语音合成适配器 |
+| `prompts/` | 版本化系统、意图、回复和安全提示词 |
+| `app/` | 配置加载和 ROS Agent Server 进程入口 |
+| `tests/` | Runtime、Graph、Provider 和 ROS 转换单元测试 |
 
-`input/ros_perception.py` 暂时仍同时承担输入聚合和音频输出，以避免一次性破坏已验证的语音闭环。
-音频与 ROS 适配的进一步拆分安排在后续阶段。
+调试网页位于仓库顶层 `agent_debug_web/`，不属于 Agent 服务实现。
 
-## 当前 LangGraph
+## 统一全模态请求
+
+`RuntimeRequest.inputs` 是内容块数组，支持：
+
+- `text`：自然语言或其他文本；
+- `audio`：WAV 等音频；
+- `image`：JPEG、PNG 等压缩图像；
+- `video`：MP4 等视频；
+- `json`：结构化上下文。
+
+小型媒体通过 `data` 内联；接口同时预留 `uri` 和 `topic`。当前 Runtime 可以处理内联数据和 URI，实时
+topic 引用必须先由客户端聚合成一次请求。默认内联总大小限制为 64 MiB。
+
+`response_modalities` 声明期望输出。当前图始终返回文本；请求包含 `audio` 时再调用配置的 Speech
+Provider。统一响应协议已支持文本、音频、图片和视频，实际生成能力由 Provider 能力声明决定。
+
+## LangGraph
 
 ```text
 START
   ↓
 understand_intent
-  ├── chat/action/cancel/unknown ─────────────┐
-  └── query + tool_call                       │
-             ↓                                │
-        safety_check                          │
-          ├── 拒绝 ───────────────────────────┤
-          └── 允许                            │
-               ↓                              │
-          execute_tool                        │
-               └──────────────────────────────┤
-                                              ↓
-                                      generate_response
-                                              ↓
-                                      synthesize_speech
-                                              ↓
-                                             END
+  ├── query + tool ─→ safety_check ─→ execute_tool ─┐
+  └── 其他意图 ─────────────────────────────────────┤
+                                                   ↓
+                                          generate_response
+                                                   ↓
+                                          synthesize_speech
+                                                   ↓
+                                                  END
 ```
 
-图每轮最多执行一个工具，因此当前不存在无限工具循环。动作意图使用确定性回复拒绝，不会进入工具层。
+一轮通常包含一次意图识别和一次回复生成。动作请求、取消意图和无法识别请求使用确定性回答。工具调用还
+必须同时满足请求允许工具、工具已注册和参数校验通过。
 
-## 模型与语音
+## 并发和取消
 
-推理和语音是两个独立选择：
-
-```text
-GenerationBackend.complete(ModelRequest) -> ModelResponse
-SpeechBackend.synthesize(SpeechRequest) -> SpeechResponse
-```
-
-MiniCPM-o 支持本机图像、音频、文本输入和 Omni 原生语音；MiniMax 文本走云端 OpenAI 兼容接口，
-MiniMax 语音走独立 T2A API；Piper 是模型无关的本地后端。`auto` 可组合原生语音与 Piper 回退。
-最终文本先经过清洗，再发送给语音 provider，因此播报内容与用户可见答案一致。语音失败只影响播报，
-不会丢失文本回复。详细配置与能力矩阵见[模型 Provider](model_providers.md)。
-
-## 当前能力和后续阶段
-
-当前能力：
-
-- 多模态语音与当前画面输入；
-- `chat`、`query`、`action`、`cancel`、`unknown` 意图；
-- 工具白名单、Pydantic 参数校验、执行超时和统一错误；
-- 只读 `get_robot_status` 工具；
-- 独立 TTS、回声抑制和用户打断。
-
-尚未实现：
-
-- 阶段 6：ROS `VehicleGateway` 和真实车辆状态；
-- 阶段 7：完整动作安全策略和高优先级停车通道；
-- 阶段 8：受控导航或运动工具；
-- 阶段 9：对话记忆和任务状态；
-- 阶段 10：进一步拆分 ROS 与音频输入模块。
+ROS Action Server 可以同时接收多个 Goal，Runtime 使用锁串行访问模型，防止本地 GPU 被并发请求压垮。
+排队请求可以在执行前取消；运行中的工具观察每个请求独立的取消令牌。已经发出的同步模型 HTTP 调用可能
+要等当前调用返回后才能结束，但取消后不会继续后续业务步骤。

@@ -1,8 +1,8 @@
-# MiniCPM-o AWQ 原生语音服务
+# MiniCPM-o AWQ 语音能力限制
 
-> 说明：Agent 不直接采用 completion 中可能属于不同 choice 的音频，而是把清洗后的最终文本发送给
-> Omni 原生语音端点。这样可以保证文本与播报一致。`speech.provider=minicpm` 强制使用原生语音；
-> 默认 `auto` 在原生语音失败时回退 Piper。
+> 重要：当前 Agent 不调用 MiniCPM-o 的独立语音 WebSocket，也不注册 `speech.provider=minicpm`。
+> 默认 `auto` 会为 MiniCPM generation 直接选择 Piper。不要把任意最终文本直接发送到
+> `/v1/audio/speech/stream`。
 
 当前方案在 RTX 3090 24GB 上运行 `MiniCPM-o-4_5-AWQ`，由 vLLM-Omni 的三个阶段完成
 多模态理解、语音编码和 24 kHz 波形生成。
@@ -13,7 +13,6 @@
 复用虚拟环境：/opt/minicpm-service/venv
 AWQ 模型：    /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
 服务地址：    http://127.0.0.1:8099
-语音 WebSocket：ws://127.0.0.1:8099/v1/audio/speech/stream
 3090 配置：   llm_agent/config/minicpmo_4_5_awq_3090.yaml
 ```
 
@@ -76,15 +75,27 @@ curl --noproxy '*' -fsS http://127.0.0.1:8099/v1/models
 
 必须为本机请求绕过 HTTP 代理，否则代理可能返回 502，并不代表模型服务异常。
 
-## Agent 在线语音
+## 为什么禁用独立原生语音
 
-仓库当前没有独立的原生 WAV 测试客户端。上述 `/health` 和 `/v1/models` 用于验证服务。在线链路会
-把最终文本发送到 `ws://127.0.0.1:8099/v1/audio/speech/stream`，校验返回的 16-bit PCM WAV，再发布
-到树莓派音频输出 topic。若配置为 `auto`，连接、超时或 WAV 校验失败会回退 Piper。
+MiniCPM-o Talker 的 Stage 1 不是普通的文本转语音服务。当前 vLLM-Omni 实现要求请求携带由 Stage 0
+在同一次 Omni 流水线中产生的 `tts_token_ids` 和 `tts_hidden_states`。只发送 `input.text` 时，Stage 1
+会因缺少条件张量而致命退出；这不是可以在 Agent 内捕获后再回退 Piper 的普通接口错误，因为整个
+三阶段模型服务会先停止。
+
+如果已经出现该错误，请停止发起请求的旧 Agent 或测试客户端，在模型终端按 `Ctrl+C`，然后重新运行：
+
+```zsh
+cd /mnt/d/work/smart_car/llm_agent
+./scripts/start_minicpm_omni.sh
+```
+
+启动后使用 `/health` 和 `/v1/models` 检查服务。语音输出请选择 Piper，或配置 MiniMax 的独立 T2A
+接口。未来只有在上游提供稳定的独立 TTS API，或 Agent 能从同一次 completion 中可靠取得与最终文本
+严格对应的音频时，才重新启用 MiniCPM 原生语音。
 
 ## 已验证结果
 
 - AWQ 权重由 AutoAWQ Marlin 内核加载；
 - Stage 0、Stage 1、Stage 2 均能在 RTX 3090 24GB 上驻留；
-- 完成一次语音生成后的显存占用约 23.9GB，3090 基本满载，不能再并行启动其他 GPU 模型；
-- 已实际生成 24 kHz WAV，测试文件约 3.94MB。
+- 三阶段服务加载后 3090 显存基本满载，不能再并行启动其他 GPU 模型；
+- 独立文本语音请求会缺少 Talker 条件张量，当前不属于受支持的 Agent 调用方式。

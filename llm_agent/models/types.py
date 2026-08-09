@@ -10,8 +10,10 @@ class ModelRequest(BaseModel):
 
     system_prompt: str
     user_prompt: str
-    speech_wav: bytes | None = None
-    image_data_url: str | None = None
+    # 多模态媒体统一使用 data URL 或 Provider 可访问的 URI。
+    audio_data_urls: list[str] = Field(default_factory=list)
+    image_data_urls: list[str] = Field(default_factory=list)
+    video_data_urls: list[str] = Field(default_factory=list)
     max_tokens: int = Field(default=256, ge=1, le=4096)
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 

@@ -1,0 +1,8 @@
+# 统一全模态 Agent 请求。
+small_car_interfaces/AgentRequest request
+---
+# Agent 最终响应。
+small_car_interfaces/AgentResponse response
+---
+# 执行进度和可选的流式部分结果。
+small_car_interfaces/AgentProgress progress

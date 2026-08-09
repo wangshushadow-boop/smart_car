@@ -93,7 +93,7 @@ fi
 timeout 5 ros2 daemon stop >/dev/null 2>&1 || true
 timeout 10 ros2 daemon start >/dev/null 2>&1 || true
 
-python3 -c "import yaml; from small_car_interfaces.msg import AudioFrame"
+python3 -c "import yaml; from small_car_interfaces.action import RunAgent; from small_car_interfaces.msg import AgentContent"
 ros2 pkg prefix small_car_interfaces >/dev/null
 
 echo "WSL ROS 2 environment refreshed"

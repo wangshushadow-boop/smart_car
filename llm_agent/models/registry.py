@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from llm_agent.adapters.audio.tts import FallbackSpeech, PiperSpeech
 
-from .minicpm import MiniCpmGeneration, MiniCpmSpeech
+from .minicpm import MiniCpmGeneration
 from .minimax import MiniMaxGeneration, MiniMaxSpeech
 from .protocol import GenerationBackend, SpeechBackend
 
@@ -49,7 +49,6 @@ def create_default_registry() -> ProviderRegistry:
     registry = ProviderRegistry()
     registry.register_generation("minicpm", MiniCpmGeneration)
     registry.register_generation("minimax", MiniMaxGeneration)
-    registry.register_speech("minicpm", MiniCpmSpeech)
     registry.register_speech("minimax", MiniMaxSpeech)
     registry.register_speech("piper", PiperSpeech)
     return registry

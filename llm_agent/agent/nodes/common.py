@@ -1,15 +1,13 @@
-"""Helpers shared by model-facing graph nodes."""
+"""模型节点共享的全模态请求转换。"""
 
 from __future__ import annotations
 
-from llm_agent.agent.events import SpeechFinished, TextReceived
+from llm_agent.runtime.contracts import RuntimeRequest
+from llm_agent.runtime.media import model_inputs
 
 
-def event_inputs(event) -> tuple[str, bytes | None, str | None]:
-    """Return text, audio and latest-image inputs without exposing ROS types."""
-
-    text = event.text if isinstance(event, TextReceived) else ""
-    speech_wav = event.speech_wav if isinstance(event, SpeechFinished) else None
-    perception = getattr(event, "perception", {})
-    image_data_url = perception.get("image_data_url")
-    return text, speech_wav, image_data_url
+def request_inputs(
+    request: RuntimeRequest,
+) -> tuple[str, list[str], list[str], list[str]]:
+    """返回文字、音频、图片和视频输入，不暴露任何 ROS 类型。"""
+    return model_inputs(request)

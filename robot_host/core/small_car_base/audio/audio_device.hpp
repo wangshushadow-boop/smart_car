@@ -33,6 +33,8 @@ class AudioCapture {
 
   /** Blocks until frame_count frames have been captured. */
   void ReadFrames(PcmSample* samples, std::size_t frame_count);
+  /** 直接写入调用方提供的 PCM 字节区，避免中间大型 vector。 */
+  void ReadBytes(std::uint8_t* data, std::size_t frame_count);
   const AudioConfig& config() const;
 
  private:
@@ -53,6 +55,10 @@ class AudioPlayback {
 
   /** Blocks until frame_count frames have been accepted by ALSA. */
   void WriteFrames(const PcmSample* samples, std::size_t frame_count);
+  /** 直接播放调用方持有的 PCM 字节区，不接管其所有权。 */
+  void WriteBytes(const std::uint8_t* data, std::size_t frame_count);
+  /** 立即丢弃尚未播放的数据，用于取消或用户打断。 */
+  void Stop();
   void Drain();
   const AudioConfig& config() const;
 
