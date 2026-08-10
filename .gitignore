@@ -34,6 +34,8 @@ install_manifest.txt
 *.dep
 
 # IDE, OS, and temporary files
+.env
+**/.env
 .settings/
 .metadata/
 .idea/

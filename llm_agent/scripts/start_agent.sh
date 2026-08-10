@@ -2,6 +2,14 @@
 # 启动统一全模态 ROS Action Server：ROS Action → Runtime → 模型。
 set -eo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# 可选的本地密钥文件。它被 Git 忽略，只允许保存 KEY=value 形式的环境变量。
+agent_env_file="${root}/llm_agent/.env"
+if [[ -f "${agent_env_file}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${agent_env_file}"
+  set +a
+fi
 source /opt/ros/kilted/setup.bash
 source "${root}/llm_agent/install-ros/setup.bash"
 set -u

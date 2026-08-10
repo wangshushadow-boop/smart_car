@@ -1,6 +1,7 @@
 # Secrets stay in environment variables.  MINIMAX_API_KEY is never stored here.
 generation:
-  provider: minicpm
+  # minicpm， minimax
+  provider: minimax
 
 speech:
   # auto: prefer the generation provider's standalone speech capability, then use fallback.
@@ -31,11 +32,13 @@ providers:
     max_retries: 1
 
   minimax:
-    base_url: https://api.minimax.io/v1
-    model: MiniMax-M2.7
+    # OpenAI-compatible endpoint; credentials remain in environment variables.
+    protocol: openai
+    base_url: https://api.minimaxi.com/v1
+    model: MiniMax-M3
     timeout_seconds: 90
     max_retries: 1
-    speech_url: https://api.minimax.io/v1/t2a_v2
+    speech_url: https://api.minimaxi.com/v1/t2a_v2
     speech_model: speech-2.8-turbo
     voice_id: Chinese (Mandarin)_Reliable_Executive
     sample_rate: 32000
