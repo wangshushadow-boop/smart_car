@@ -19,9 +19,11 @@ bool AgentActionClient::Send(std::string request_id, std::string session_id,
                              std::vector<std::uint8_t> wav,
                              std::vector<std::uint8_t> jpeg) {
   if (!client_->wait_for_action_server(std::chrono::seconds(1))) {
-    failure_handler_("Agent Action Server 不可用");
+    failure_handler_(request_id, "Agent Action Server 不可用");
     return false;
   }
+
+  const std::string callback_request_id = request_id;
 
   RunAgent::Goal goal;
   goal.request.request_id = std::move(request_id);
@@ -49,10 +51,29 @@ bool AgentActionClient::Send(std::string request_id, std::string session_id,
   }
 
   auto options = rclcpp_action::Client<RunAgent>::SendGoalOptions();
-  options.goal_response_callback = [this](GoalHandle::SharedPtr handle) {
-    goal_handle_ = std::move(handle);
-    if (!goal_handle_) {
-      failure_handler_("Agent 拒绝了请求");
+  {
+    std::lock_guard<std::mutex> lock(goal_mutex_);
+    pending_request_id_ = callback_request_id;
+    goal_handle_.reset();
+  }
+  options.goal_response_callback =
+      [this, callback_request_id](GoalHandle::SharedPtr handle) {
+    bool stale = false;
+    {
+      std::lock_guard<std::mutex> lock(goal_mutex_);
+      stale = pending_request_id_ != callback_request_id;
+      if (!stale) {
+        goal_handle_ = handle;
+      }
+    }
+    if (stale) {
+      if (handle) {
+        client_->async_cancel_goal(handle);
+      }
+      return;
+    }
+    if (!handle) {
+      failure_handler_(callback_request_id, "Agent 拒绝了请求");
     }
   };
   options.feedback_callback = [this](
@@ -63,21 +84,62 @@ bool AgentActionClient::Send(std::string request_id, std::string session_id,
                 feedback->progress.percent,
                 feedback->progress.message.c_str());
   };
-  options.result_callback = [this](const GoalHandle::WrappedResult& wrapped) {
-    goal_handle_.reset();
+  options.result_callback =
+      [this, callback_request_id](const GoalHandle::WrappedResult& wrapped) {
+    {
+      std::lock_guard<std::mutex> lock(goal_mutex_);
+      if (pending_request_id_ == callback_request_id) {
+        pending_request_id_.clear();
+        goal_handle_.reset();
+      }
+    }
     if (!wrapped.result) {
-      failure_handler_("Agent 没有返回结果");
+      failure_handler_(callback_request_id, "Agent 没有返回结果");
       return;
     }
-    result_handler_(std::move(wrapped.result->response));
+    result_handler_(callback_request_id, std::move(wrapped.result->response));
   };
-  client_->async_send_goal(goal, options);
+  try {
+    client_->async_send_goal(goal, options);
+  } catch (const std::exception& error) {
+    {
+      std::lock_guard<std::mutex> lock(goal_mutex_);
+      if (pending_request_id_ == callback_request_id) {
+        pending_request_id_.clear();
+        goal_handle_.reset();
+      }
+    }
+    failure_handler_(callback_request_id,
+                     std::string("Agent 请求提交失败：") + error.what());
+    return false;
+  }
   return true;
 }
 
+void AgentActionClient::Cancel(const std::string& request_id) {
+  GoalHandle::SharedPtr handle;
+  {
+    std::lock_guard<std::mutex> lock(goal_mutex_);
+    if (pending_request_id_ != request_id) {
+      return;
+    }
+    pending_request_id_.clear();
+    handle = std::move(goal_handle_);
+  }
+  if (handle) {
+    client_->async_cancel_goal(handle);
+  }
+}
+
 void AgentActionClient::Cancel() {
-  if (goal_handle_) {
-    client_->async_cancel_goal(goal_handle_);
+  GoalHandle::SharedPtr handle;
+  {
+    std::lock_guard<std::mutex> lock(goal_mutex_);
+    pending_request_id_.clear();
+    handle = std::move(goal_handle_);
+  }
+  if (handle) {
+    client_->async_cancel_goal(handle);
   }
 }
 

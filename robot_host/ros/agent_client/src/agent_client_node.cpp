@@ -48,6 +48,13 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       declare_parameter<double>("motion_linear_speed_mps", 0.2);
   const double motion_timeout_seconds =
       declare_parameter<double>("motion_timeout_seconds", 15.0);
+  const double agent_request_timeout_seconds =
+      declare_parameter<double>("agent_request_timeout_seconds", 120.0);
+  if (agent_request_timeout_seconds <= 0.0) {
+    throw std::invalid_argument("Agent 请求超时必须大于 0 秒");
+  }
+  request_timeout_ = std::chrono::milliseconds(static_cast<std::int64_t>(
+      agent_request_timeout_seconds * 1000.0));
   if (capture_config_.channels != 1 || image_topic.empty() ||
       action_name.empty() || drive_action.empty() || spin_action.empty()) {
     throw std::invalid_argument(
@@ -75,10 +82,13 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       });
   action_client_ = std::make_unique<AgentActionClient>(
       this, action_name,
-      [this](AgentActionClient::Response response) {
-        HandleResponse(std::move(response));
+      [this](const std::string& request_id,
+             AgentActionClient::Response response) {
+        HandleResponse(request_id, std::move(response));
       },
-      [this](const std::string& message) { HandleActionFailure(message); });
+      [this](const std::string& request_id, const std::string& message) {
+        HandleActionFailure(request_id, message);
+      });
   motion_parser_ = std::make_unique<MotionTaskParser>(
       MotionLimits{max_distance_m, max_rotation_deg});
   nav2_client_ = std::make_unique<Nav2MotionClient>(
@@ -92,6 +102,9 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       [this](sensor_msgs::msg::CompressedImage::UniquePtr message) {
         camera_.Store(std::move(message));
       });
+  request_timeout_timer_ = create_wall_timer(
+      std::chrono::seconds(1),
+      [this]() { CheckRequestTimeout(); });
   session_id_ = "pi-" + std::to_string(now().nanoseconds());
   capture_thread_ = std::thread(&AgentClientNode::CaptureLoop, this);
   RCLCPP_INFO(get_logger(), "C++ Agent Client 已启动：%s", action_name.c_str());
@@ -183,16 +196,27 @@ void AgentClientNode::FinishUtterance() {
   preroll_->Clear();
   request_active_.store(true);
   const std::string request_id = NextRequestId();
+  {
+    std::lock_guard<std::mutex> lock(request_mutex_);
+    active_request_id_ = request_id;
+    request_deadline_ = std::chrono::steady_clock::now() + request_timeout_;
+  }
   if (!action_client_->Send(request_id, session_id_, std::move(wav),
                             std::move(jpeg))) {
-    request_active_.store(false);
+    CompleteRequest(request_id);
   } else {
     RCLCPP_INFO(get_logger(), "已提交多模态请求：%s",
                 request_id.substr(0, 16).c_str());
   }
 }
 
-void AgentClientNode::HandleResponse(AgentActionClient::Response response) {
+void AgentClientNode::HandleResponse(
+    const std::string& request_id, AgentActionClient::Response response) {
+  if (!IsActiveRequest(request_id)) {
+    RCLCPP_WARN(get_logger(), "忽略已超时请求的迟到响应：%s",
+                request_id.c_str());
+    return;
+  }
   std::vector<std::uint8_t> answer_audio;
   std::optional<std::vector<MotionTask>> motion_tasks;
   bool invalid_motion_task = false;
@@ -244,12 +268,48 @@ void AgentClientNode::HandleResponse(AgentActionClient::Response response) {
   } else if (!answer_audio.empty() && !invalid_motion_task) {
     player_->Play(std::move(answer_audio));
   }
-  request_active_.store(false);
+  CompleteRequest(request_id);
 }
 
-void AgentClientNode::HandleActionFailure(const std::string& message) {
-  request_active_.store(false);
+void AgentClientNode::HandleActionFailure(const std::string& request_id,
+                                          const std::string& message) {
+  if (!CompleteRequest(request_id)) {
+    return;
+  }
   RCLCPP_ERROR(get_logger(), "%s", message.c_str());
+}
+
+void AgentClientNode::CheckRequestTimeout() {
+  std::string timed_out_request;
+  {
+    std::lock_guard<std::mutex> lock(request_mutex_);
+    if (active_request_id_.empty() ||
+        std::chrono::steady_clock::now() < request_deadline_) {
+      return;
+    }
+    timed_out_request = std::move(active_request_id_);
+    request_active_.store(false);
+  }
+  action_client_->Cancel(timed_out_request);
+  RCLCPP_ERROR(get_logger(),
+               "Agent 请求超时，已取消并恢复语音监听：%s（%lld ms）",
+               timed_out_request.c_str(),
+               static_cast<long long>(request_timeout_.count()));
+}
+
+bool AgentClientNode::IsActiveRequest(const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(request_mutex_);
+  return active_request_id_ == request_id;
+}
+
+bool AgentClientNode::CompleteRequest(const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(request_mutex_);
+  if (active_request_id_ != request_id) {
+    return false;
+  }
+  active_request_id_.clear();
+  request_active_.store(false);
+  return true;
 }
 
 std::string AgentClientNode::NextRequestId() {

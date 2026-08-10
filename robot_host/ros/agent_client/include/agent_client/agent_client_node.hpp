@@ -2,8 +2,10 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -32,8 +34,13 @@ class AgentClientNode : public rclcpp::Node {
   void CaptureLoop();
   void ResetSpeechState();
   void FinishUtterance();
-  void HandleResponse(AgentActionClient::Response response);
-  void HandleActionFailure(const std::string& message);
+  void HandleResponse(const std::string& request_id,
+                      AgentActionClient::Response response);
+  void HandleActionFailure(const std::string& request_id,
+                           const std::string& message);
+  void CheckRequestTimeout();
+  bool IsActiveRequest(const std::string& request_id);
+  bool CompleteRequest(const std::string& request_id);
   std::string NextRequestId();
 
   small_car::AudioConfig capture_config_;
@@ -48,12 +55,17 @@ class AgentClientNode : public rclcpp::Node {
   std::unique_ptr<Nav2MotionClient> nav2_client_;
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr
       image_subscription_;
+  rclcpp::TimerBase::SharedPtr request_timeout_timer_;
 
   std::uint64_t min_speech_ns_ = 0;
   std::uint64_t silence_limit_ns_ = 0;
   std::uint64_t speech_ns_ = 0;
   std::uint64_t silence_ns_ = 0;
   std::string session_id_;
+  std::mutex request_mutex_;
+  std::string active_request_id_;
+  std::chrono::steady_clock::time_point request_deadline_;
+  std::chrono::milliseconds request_timeout_{120000};
   std::atomic<std::uint64_t> request_sequence_{0};
   std::atomic<bool> request_active_{false};
   std::atomic<bool> stopping_{false};

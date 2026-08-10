@@ -10,6 +10,8 @@ car_agent_client:
     vad_silence_ms: 600
     vad_preroll_ms: 500
     max_speech_seconds: 15
+    # Agent Server 重启或网络中断时，超时后自动恢复语音监听。
+    agent_request_timeout_seconds: 120.0
     # 模型不能覆盖下列本地安全限制和执行参数。
     motion_max_distance_m: 2.0
     motion_max_rotation_deg: 180.0
