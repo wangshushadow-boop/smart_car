@@ -689,22 +689,19 @@ class SmallCarBaseNode : public rclcpp::Node {
     return *middle;
   }
 
-  /** 发布经过中值滤波的有效超声测距，并更新内部安全模块。 */
+  /**
+   * 发布超声测距并更新内部安全模块。
+   *
+   * 无回波时不能停止发布，否则空旷环境会被 collision_monitor 误判成传感器失联。
+   * Nav2 Kilted 的 Range source 会拒绝大于 max_range（包括正无穷）的数据，因此
+   * 使用 max_range 表示量程内没有目标；MCU 诊断仍单独保留无回波状态。
+   */
   void PublishRange() {
     const auto value = client_.GetChassisStatus();
     if (!value.has_value() || value->mcu_time_ms == last_chassis_time_ms_) {
       return;
     }
     last_chassis_time_ms_ = value->mcu_time_ms;
-    if (value->ultra_mm < 0) {
-      ultrasonic_samples_->Clear();
-      filtered_ultrasonic_m_.reset();
-      command_safety_->SetFrontRange(0.0, false);
-      return;
-    }
-    filtered_ultrasonic_m_ =
-        FilterUltrasonicRange(value->ultra_mm / 1000.0);
-    command_safety_->SetFrontRange(*filtered_ultrasonic_m_, true);
     sensor_msgs::msg::Range message;
     message.header.stamp = now();
     message.header.frame_id = ultrasonic_frame_;
@@ -712,6 +709,19 @@ class SmallCarBaseNode : public rclcpp::Node {
     message.field_of_view = static_cast<float>(ultra_fov_rad_);
     message.min_range = static_cast<float>(ultra_min_m_);
     message.max_range = static_cast<float>(ultra_max_m_);
+    message.variance = 0.0F;
+    if (value->ultra_mm < 0) {
+      ultrasonic_samples_->Clear();
+      filtered_ultrasonic_m_.reset();
+      command_safety_->SetFrontRange(0.0, false);
+      // max_range 对 Collision Monitor 有效，同时不会落入近距离停车区域。
+      message.range = message.max_range;
+      range_pub_->publish(message);
+      return;
+    }
+    filtered_ultrasonic_m_ =
+        FilterUltrasonicRange(value->ultra_mm / 1000.0);
+    command_safety_->SetFrontRange(*filtered_ultrasonic_m_, true);
     message.range = static_cast<float>(*filtered_ultrasonic_m_);
     range_pub_->publish(message);
   }
