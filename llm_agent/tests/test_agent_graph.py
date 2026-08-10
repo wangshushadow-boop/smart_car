@@ -74,6 +74,58 @@ def invoke(graph, request: RuntimeRequest) -> dict:
 
 
 class AgentGraphTest(unittest.TestCase):
+    def test_logs_complete_raw_model_outputs(self) -> None:
+        intent_output = (
+            '{"intent":"chat","tool_name":null,"arguments":{},'
+            '"reason":"测试原始日志"}'
+        )
+        response_output = "<think>内部推理</think>最终回答"
+        model = FakeModel([intent_output, response_output])
+
+        with self.assertLogs("llm_agent.model_output", level="INFO") as captured:
+            invoke(
+                build_graph(model=model, tts=FakeTts()),
+                make_request("测试模型日志", audio_output=False),
+            )
+
+        logs = "\n".join(captured.output)
+        self.assertIn("stage=intent", logs)
+        self.assertIn(intent_output, logs)
+        self.assertIn("stage=response", logs)
+        self.assertIn(response_output, logs)
+
+    def test_intent_uses_audio_without_visual_distraction(self) -> None:
+        model = FakeModel([
+            '{"intent":"chat","tool_name":null,"arguments":{},"reason":"询问画面"}',
+            "画面内容正常。",
+        ])
+        request = RuntimeRequest(
+            request_id="multimodal-intent",
+            source="test",
+            inputs=[
+                ContentPart(
+                    type=ContentType.AUDIO,
+                    mime_type="audio/wav",
+                    data=b"RIFF-fake",
+                ),
+                ContentPart(
+                    type=ContentType.IMAGE,
+                    mime_type="image/jpeg",
+                    data=b"jpeg-fake",
+                ),
+            ],
+            response_modalities=[ContentType.TEXT],
+        )
+
+        invoke(build_graph(model=model, tts=FakeTts()), request)
+
+        self.assertEqual(len(model.requests[0].audio_data_urls), 1)
+        self.assertEqual(model.requests[0].image_data_urls, [])
+        self.assertEqual(model.requests[0].video_data_urls, [])
+        # 最终回答仍然保留全部模态，不影响看图问答。
+        self.assertEqual(len(model.requests[1].audio_data_urls), 1)
+        self.assertEqual(len(model.requests[1].image_data_urls), 1)
+
     def test_chat_skips_tools(self) -> None:
         model = FakeModel([
             '{"intent":"chat","tool_name":null,"arguments":{},"reason":"问候"}',

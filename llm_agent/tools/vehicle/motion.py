@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..context import ToolContext
@@ -26,11 +28,12 @@ class MoveRelativeArguments(BaseModel):
 
 
 class RotateRelativeArguments(BaseModel):
-    """相对旋转参数；正数左转，负数右转。"""
+    """相对旋转参数；优先使用显式方向，并兼容旧的带符号角度。"""
 
     model_config = ConfigDict(extra="forbid")
 
     angle_deg: float = Field(ge=-180.0, le=180.0)
+    direction: Literal["left", "right"] | None = None
 
     @field_validator("angle_deg")
     @classmethod
@@ -73,10 +76,16 @@ class RotateRelativeTool:
         self, arguments: RotateRelativeArguments, context: ToolContext
     ) -> dict:
         del context
+        angle_deg = arguments.angle_deg
+        # 显式方向消除模型对正负号约定的歧义；未提供时兼容旧模型。
+        if arguments.direction == "left":
+            angle_deg = abs(angle_deg)
+        elif arguments.direction == "right":
+            angle_deg = -abs(angle_deg)
         return {
             "schema": MOTION_TASK_SCHEMA,
             "action": self.name,
-            "angle_deg": arguments.angle_deg,
+            "angle_deg": angle_deg,
         }
 
 

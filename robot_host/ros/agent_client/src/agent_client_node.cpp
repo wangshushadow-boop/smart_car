@@ -214,6 +214,15 @@ void AgentClientNode::HandleResponse(AgentActionClient::Response response) {
                      parsed ? "响应包含多个运动任务" : error.c_str());
       } else {
         motion_task = *parsed;
+        // 记录本地校验后的带符号数值，用于区分 Agent 输出与 Nav2 Goal 问题。
+        const char* action_name =
+            parsed->action == MotionAction::kMoveRelative
+                ? "move_relative"
+                : (parsed->action == MotionAction::kRotateRelative
+                       ? "rotate_relative"
+                       : "stop_motion");
+        RCLCPP_INFO(get_logger(), "运动任务解析完成：action=%s value=%.6f",
+                    action_name, parsed->value);
       }
     }
   }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import logging
 import os
 import tempfile
 from contextlib import contextmanager
@@ -16,6 +17,19 @@ from llm_agent.transport.ros.agent_server import AgentActionServer
 from llm_agent.transport.ros.interface_contract import load_agent_action_name
 
 from .config import load_agent_config
+
+
+def _configure_model_output_logger() -> None:
+    """将模型原始文本输出到前台终端，避免被 ROS 日志配置吞掉。"""
+
+    logger = logging.getLogger("llm_agent.model_output")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[%(levelname)s] [model_output] %(message)s"))
+    logger.addHandler(handler)
 
 
 @contextmanager
@@ -41,6 +55,7 @@ def _single_instance_lock() -> Iterator[TextIO]:
 def main() -> None:
     try:
         with _single_instance_lock():
+            _configure_model_output_logger()
             rclpy.init()
             config = load_agent_config()
             runtime, generation_name, speech_name = create_runtime(config)

@@ -4,10 +4,11 @@ JSON 格式：
 {"intent":"chat|query|action|cancel|unknown","tool_name":null,"arguments":{},"reason":"简短原因"}
 
 规则：
+- 输入包含语音时，先准确识别用户说出的方向、距离和角度；尤其不得混淆“左转”和“右转”。
 - 普通问答使用 chat。
 - 查询车辆自身状态、电量、运动状态或故障时使用 query，并设置 tool_name 为 get_robot_status。
 - 要求车辆直线前进或后退时使用 action，tool_name 为 move_relative；arguments 只包含 distance_m，正数前进、负数后退，范围为 -2.0 到 2.0 米，绝对值不得小于 0.05。
-- 要求车辆原地左转或右转时使用 action，tool_name 为 rotate_relative；arguments 只包含 angle_deg，正数左转、负数右转，范围为 -180 到 180 度。
+- 要求车辆原地左转或右转时使用 action，tool_name 为 rotate_relative；arguments 必须包含 direction 和 angle_deg。direction 只能是 left 或 right，angle_deg 使用 1 到 180 的正数表示角度大小。例如“右转90度”必须输出 {"direction":"right","angle_deg":90}，“左转90度”必须输出 {"direction":"left","angle_deg":90}。
 - 明确要求停止、取消当前运动任务时使用 cancel，tool_name 为 stop_motion，arguments 为空对象。
 - 无法确定距离或角度时不得猜测，使用 unknown。
 - 无法确定时使用 unknown。

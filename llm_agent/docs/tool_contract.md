@@ -11,11 +11,15 @@
 | --- | --- | --- |
 | `get_robot_status` | 只读 | 已注册；ROS 网关尚未接入时返回 `available=false` |
 | `move_relative` | 声明式动作 | 距离范围 -2～2 m，绝对值至少 0.05 m |
-| `rotate_relative` | 声明式动作 | 角度范围 -180～180°，正数左转 |
+| `rotate_relative` | 声明式动作 | 模型使用 `left/right`；下发时正数左转、负数右转 |
 | `stop_motion` | 声明式动作 | 请求树莓派取消当前 Nav2 Action |
 
 动作工具只生成 `small_car.motion.v1` JSON，不在 Agent Server 发布速度或访问 Nav2。树莓派
 `agent_client` 会拒绝未知字段和越界数值，再调用 Nav2 的 `DriveOnHeading` 或 `Spin` Action。
+模型侧旋转参数使用显式 `direction` 和正数角度大小，工具层再转换为下发协议的带符号角度。解析器
+优先接受标准 JSON，并通过 `ast.literal_eval` 安全兼容 MiniCPM 的单引号字典输出；不会执行模型代码。
+旧输出只有在 `reason` 中包含唯一明确的“左转”或“右转”时才会补齐方向；方向缺失或矛盾时拒绝
+执行，避免实车根据含糊的角度符号转向。
 
 ## 调用与结果
 

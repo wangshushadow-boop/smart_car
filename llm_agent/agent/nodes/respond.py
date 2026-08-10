@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from llm_agent.adapters.audio.tts import SpeechSynthesizer
 from llm_agent.agent.prompt_loader import PromptSet
 from llm_agent.agent.state import IntentType
@@ -11,6 +13,9 @@ from llm_agent.models.types import ModelRequest, SpeechRequest
 from llm_agent.runtime.contracts import ContentType
 
 from .common import request_inputs
+
+
+_MODEL_OUTPUT_LOGGER = logging.getLogger("llm_agent.model_output")
 
 
 def create_response_node(model: ModelBackend, prompts: PromptSet):
@@ -70,6 +75,13 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
                     max_tokens=256,
                     temperature=0.2,
                 )
+            )
+            # 在清理思考标签和 Markdown 前记录模型完整原始文本。
+            _MODEL_OUTPUT_LOGGER.info(
+                "request_id=%s stage=response provider=%s 完整输出：\n%s",
+                request.request_id,
+                response.provider,
+                response.text,
             )
             answer = sanitize_spoken_answer(response.text)
             if not answer:

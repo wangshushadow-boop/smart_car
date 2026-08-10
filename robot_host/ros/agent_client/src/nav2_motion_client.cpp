@@ -119,6 +119,10 @@ bool Nav2MotionClient::ExecuteSpin(double angle_deg) {
   goal.target_yaw = static_cast<float>(angle_deg * kPi / 180.0);
   goal.time_allowance = ToDuration(timeout_seconds_);
   goal.disable_collision_checks = false;
+  // 同时记录角度与弧度，确认负号是否在构造 Nav2 Goal 时丢失。
+  RCLCPP_INFO(node_->get_logger(),
+              "提交 Nav2 Spin：angle_deg=%.6f target_yaw=%.6f rad",
+              angle_deg, static_cast<double>(goal.target_yaw));
 
   auto options = rclcpp_action::Client<Spin>::SendGoalOptions();
   options.goal_response_callback = [this](SpinHandle::SharedPtr handle) {
