@@ -20,6 +20,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from llm_agent.adapters.audio.tts import PiperSpeech, SpeechSynthesizer
+from llm_agent.asr import AsrBackend, Qwen3Asr
 from llm_agent.models.minicpm import MiniCpmModel
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry
@@ -52,6 +53,7 @@ def build_graph(
     prompts: PromptSet | None = None,
     status_provider: RobotStatusProvider | None = None,
     skill_registry: SkillRegistry | None = None,
+    asr: AsrBackend | None = None,
 ):
     """构造并编译 LangGraph。
 
@@ -63,6 +65,8 @@ def build_graph(
     # 默认 Provider：本地 MiniCPM + Piper，便于独立启动进程。
     model = model or MiniCpmModel()
     tts = tts or PiperSpeech()
+    # 适配器本身很轻，Qwen 权重只在生成模型不支持音频且收到音频时加载。
+    asr = asr or Qwen3Asr()
     prompts = prompts or load_prompts()
     # Tool 白名单：4 个声明式底盘 Tool，全部由树莓派侧二次校验后真正执行。
     if registry is None:
@@ -79,7 +83,7 @@ def build_graph(
     graph = StateGraph(AgentState)
     graph.add_node(
         "understand_intent",
-        create_understand_node(model, prompts, skill_registry.catalog_prompt()),
+        create_understand_node(model, prompts, skill_registry.catalog_prompt(), asr),
     )
     graph.add_node("safety_check", create_safety_check_node(registry))
     graph.add_node("execute_tool", create_execute_tool_node(registry))

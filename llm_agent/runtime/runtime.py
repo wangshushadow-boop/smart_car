@@ -163,6 +163,7 @@ class AgentRuntime:
             metadata={
                 "elapsed_seconds": round(monotonic() - started_at, 3),
                 "conversation_history_turns": len(conversation_history),
+                "asr_provider": state.get("asr_backend", ""),
             },
         )
 

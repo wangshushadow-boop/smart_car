@@ -80,6 +80,19 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
         # CHAT / 状态查询：调模型生成自然语言回复。
         request = state["request"]
         text, audio_urls, image_urls, video_urls = request_inputs(request)
+        # 不支持音频的生成模型在理解阶段已经完成一次 ASR；最终回复复用
+        # 图状态中的转写文本，不重复加载或调用 ASR。
+        if audio_urls and not model.capabilities.audio_input:
+            audio_urls = []
+            transcript = state.get("transcript", "")
+            if transcript:
+                text = "\n".join(filter(None, [text, transcript]))
+        # 树莓派会为每轮语音附带最新相机帧。纯文本模型不能因为这些附加
+        # 媒体使整轮回复失败；只向当前模型转发其明确声明支持的模态。
+        if not model.capabilities.image_input:
+            image_urls = []
+        if not model.capabilities.video_input:
+            video_urls = []
         context = [prompts.response, prompts.safety]
         history = format_conversation_history(state.get("conversation_history", []))
         if history:
@@ -99,8 +112,8 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
                     audio_data_urls=audio_urls,
                     image_data_urls=image_urls,
                     video_data_urls=video_urls,
-                    max_tokens=256,
-                    temperature=0.2,
+                    max_tokens=model.capabilities.response_max_tokens,
+                    temperature=model.capabilities.response_temperature,
                 )
             )
             # 在清理思考标签和 Markdown 前记录模型完整原始文本。

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from llm_agent.agent.graph import build_graph
+from llm_agent.asr import Qwen3Asr
 from llm_agent.conversation import InMemoryConversationStore, NullConversationStore
 from llm_agent.models.registry import select_backends
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry
@@ -48,7 +49,12 @@ def create_runtime(config) -> tuple[AgentRuntime, str, str]:
         skill_registry.register(MotionSequenceSkill())
     # 4. 编译 LangGraph 并封装为 Runtime，供 ROS Action Server 注入。
     runtime = AgentRuntime(
-        build_graph(model=generation, tts=speech, skill_registry=skill_registry),
+        build_graph(
+            model=generation,
+            tts=speech,
+            skill_registry=skill_registry,
+            asr=Qwen3Asr(),
+        ),
         conversation_store=conversation_store,
     )
     return runtime, generation.provider_name, speech.provider_name

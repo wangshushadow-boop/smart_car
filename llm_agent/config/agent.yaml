@@ -30,6 +30,10 @@ providers:
     model: /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
     timeout_seconds: 90
     max_retries: 1
+    intent_max_tokens: 160
+    intent_temperature: 0.0
+    response_max_tokens: 256
+    response_temperature: 0.2
 
   minimax:
     # OpenAI-compatible endpoint; credentials remain in environment variables.
@@ -38,6 +42,12 @@ providers:
     model: MiniMax-M3
     timeout_seconds: 90
     max_retries: 1
+    # M3 的 reasoning token 计入生成上限，意图和回复都保留完整思考预算。
+    intent_max_tokens: 2048
+    intent_temperature: 0.01
+    response_max_tokens: 2048
+    response_temperature: 0.2
+    reasoning_split: true
     speech_url: https://api.minimaxi.com/v1/t2a_v2
     speech_model: speech-2.8-turbo
     voice_id: Chinese (Mandarin)_Reliable_Executive

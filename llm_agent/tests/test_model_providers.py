@@ -56,6 +56,8 @@ class ModelProvidersTest(unittest.TestCase):
     def test_minicpm_maps_all_input_modalities(self) -> None:
         client = FakeOpenAiClient()
         model = MiniCpmGeneration(client=client)
+        self.assertEqual(model.capabilities.intent_max_tokens, 160)
+        self.assertEqual(model.capabilities.response_max_tokens, 256)
         model.complete(
             ModelRequest(
                 system_prompt="system",
@@ -74,6 +76,8 @@ class ModelProvidersTest(unittest.TestCase):
     def test_minimax_generation_uses_provider_specific_parameters(self) -> None:
         client = FakeOpenAiClient()
         model = MiniMaxGeneration({"model": "MiniMax-M3"}, client=client)
+        self.assertEqual(model.capabilities.intent_max_tokens, 2048)
+        self.assertEqual(model.capabilities.response_max_tokens, 2048)
         response = model.complete(
             ModelRequest(
                 system_prompt="system",
@@ -85,6 +89,37 @@ class ModelProvidersTest(unittest.TestCase):
         self.assertEqual(response.text, "云端回答")
         self.assertEqual(client.chat.completions.arguments["temperature"], 0.01)
         self.assertIn("reasoning_split", client.chat.completions.arguments["extra_body"])
+
+    def test_generation_parameters_can_be_overridden_per_provider(self) -> None:
+        minicpm = MiniCpmGeneration(
+            {
+                "intent_max_tokens": 320,
+                "intent_temperature": 0.1,
+                "response_max_tokens": 640,
+                "response_temperature": 0.4,
+            },
+            client=FakeOpenAiClient(),
+        )
+        minimax_client = FakeOpenAiClient()
+        minimax = MiniMaxGeneration(
+            {
+                "intent_max_tokens": 1024,
+                "intent_temperature": 0.02,
+                "response_max_tokens": 1536,
+                "response_temperature": 0.3,
+                "reasoning_split": False,
+            },
+            client=minimax_client,
+        )
+
+        self.assertEqual(minicpm.capabilities.intent_max_tokens, 320)
+        self.assertEqual(minicpm.capabilities.response_temperature, 0.4)
+        self.assertEqual(minimax.capabilities.intent_temperature, 0.02)
+        self.assertEqual(minimax.capabilities.response_max_tokens, 1536)
+        minimax.complete(ModelRequest(system_prompt="system", user_prompt="hello"))
+        self.assertFalse(
+            minimax_client.chat.completions.arguments["extra_body"]["reasoning_split"]
+        )
 
     def test_minimax_openai_ignores_claude_code_model_override(self) -> None:
         client = FakeOpenAiClient()
@@ -111,6 +146,25 @@ class ModelProvidersTest(unittest.TestCase):
                     audio_data_urls=["data:audio/wav;base64,d2F2"],
                 )
             )
+
+    def test_minimax_openai_maps_image_input(self) -> None:
+        client = FakeOpenAiClient()
+        model = MiniMaxGeneration(client=client)
+
+        model.complete(
+            ModelRequest(
+                system_prompt="system",
+                user_prompt="前方有什么？",
+                image_data_urls=["data:image/jpeg;base64,anBn"],
+            )
+        )
+
+        content = client.chat.completions.arguments["messages"][1]["content"]
+        self.assertTrue(model.capabilities.image_input)
+        self.assertEqual([item["type"] for item in content], ["text", "image_url"])
+        self.assertEqual(
+            content[1]["image_url"]["url"], "data:image/jpeg;base64,anBn"
+        )
 
     def test_minimax_generation_supports_anthropic_environment(self) -> None:
         captured = {}
@@ -152,6 +206,37 @@ class ModelProvidersTest(unittest.TestCase):
         payload = json.loads(captured["request"].data.decode("utf-8"))
         self.assertEqual(payload["model"], "MiniMax-M3")
         self.assertEqual(payload["temperature"], 0.01)
+
+    def test_minimax_anthropic_maps_base64_image_input(self) -> None:
+        captured = {}
+
+        def opener(request, timeout):
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return FakeHttpResponse(
+                {"content": [{"type": "text", "text": "看到小车。"}]}
+            )
+
+        with patch.dict(
+            "os.environ",
+            {
+                "ANTHROPIC_AUTH_TOKEN": "test-token",
+                "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/anthropic",
+            },
+            clear=True,
+        ):
+            model = MiniMaxGeneration({"protocol": "anthropic"}, opener=opener)
+            model.complete(
+                ModelRequest(
+                    system_prompt="system",
+                    user_prompt="描述图片",
+                    image_data_urls=["data:image/jpeg;base64,anBn"],
+                )
+            )
+
+        content = captured["payload"]["messages"][0]["content"]
+        self.assertEqual(content[1]["type"], "image")
+        self.assertEqual(content[1]["source"]["media_type"], "image/jpeg")
+        self.assertEqual(content[1]["source"]["data"], "anBn")
 
     def test_minimax_speech_decodes_and_validates_wav(self) -> None:
         wav = make_wav()

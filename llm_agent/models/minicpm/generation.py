@@ -28,10 +28,23 @@ class MiniCpmGeneration:
         # The service supports video, but ModelRequest does not expose it yet.
         video_input=True,
         tool_calling=False,
+        intent_max_tokens=160,
+        intent_temperature=0.0,
+        response_max_tokens=256,
+        response_temperature=0.2,
     )
 
     def __init__(self, settings: dict | None = None, client: Any | None = None) -> None:
         settings = settings or {}
+        self.capabilities = GenerationCapabilities(
+            **{
+                **type(self).capabilities.model_dump(),
+                "intent_max_tokens": settings.get("intent_max_tokens", 160),
+                "intent_temperature": settings.get("intent_temperature", 0.0),
+                "response_max_tokens": settings.get("response_max_tokens", 256),
+                "response_temperature": settings.get("response_temperature", 0.2),
+            }
+        )
         # 环境变量允许在不修改代码的情况下临时覆盖连接参数（方便本地切换端口）。
         base_url = os.getenv(
             "MINICPM_BASE_URL", settings.get("base_url", "http://127.0.0.1:8099/v1")

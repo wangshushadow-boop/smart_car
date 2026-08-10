@@ -1,7 +1,8 @@
-"""MiniMax 云端文本推理（仅支持文本）。
+"""MiniMax 云端推理。
 
 同时支持 MiniMax 的 OpenAI 与 Anthropic 兼容接口。Claude Code 常用的
-``ANTHROPIC_*`` 环境变量可以直接复用，但密钥仍只从进程环境读取。
+``ANTHROPIC_*`` 环境变量可以直接复用；M3 的图片输入按兼容协议转换，
+密钥仍只从进程环境读取。
 """
 
 from __future__ import annotations
@@ -16,15 +17,20 @@ from ..types import ModelRequest, ModelResponse
 
 
 class MiniMaxGeneration:
-    """MiniMax 文本推理 Provider。"""
+    """MiniMax 云端生成 Provider。"""
 
     provider_name = "minimax"
     capabilities = GenerationCapabilities(
         text_input=True,
-        image_input=False,
+        image_input=True,
         audio_input=False,
         video_input=False,
         tool_calling=True,
+        # MiniMax 推理模型会先生成 reasoning；预算过小可能在最终 JSON 前截断。
+        intent_max_tokens=2048,
+        intent_temperature=0.01,
+        response_max_tokens=2048,
+        response_temperature=0.2,
     )
 
     def __init__(
@@ -34,6 +40,16 @@ class MiniMaxGeneration:
         opener: Callable[..., Any] = urlopen,
     ) -> None:
         settings = settings or {}
+        self.capabilities = GenerationCapabilities(
+            **{
+                **type(self).capabilities.model_dump(),
+                "intent_max_tokens": settings.get("intent_max_tokens", 2048),
+                "intent_temperature": settings.get("intent_temperature", 0.01),
+                "response_max_tokens": settings.get("response_max_tokens", 2048),
+                "response_temperature": settings.get("response_temperature", 0.2),
+            }
+        )
+        self._reasoning_split = bool(settings.get("reasoning_split", True))
         self._timeout = float(settings.get("timeout_seconds", 90))
         self._opener = opener
         anthropic_base_url = os.getenv("ANTHROPIC_BASE_URL", "").rstrip("/")
@@ -95,8 +111,6 @@ class MiniMaxGeneration:
     def complete(self, request: ModelRequest) -> ModelResponse:
         """执行单次推理；多模态请求会被立刻抛错以避免静默丢失。"""
         unsupported = []
-        if request.image_data_urls:
-            unsupported.append("image")
         if request.audio_data_urls:
             unsupported.append("audio")
         if request.video_data_urls:
@@ -113,17 +127,27 @@ class MiniMaxGeneration:
         return ModelResponse(text=answer, provider=self.provider_name)
 
     def _complete_openai(self, request: ModelRequest) -> str | None:
+        user_content: str | list[dict[str, Any]] = request.user_prompt
+        if request.image_data_urls:
+            user_content = [{"type": "text", "text": request.user_prompt}]
+            user_content.extend(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": image_url},
+                }
+                for image_url in request.image_data_urls
+            )
         try:
             result = self._client.chat.completions.create(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": request.system_prompt},
-                    {"role": "user", "content": request.user_prompt},
+                    {"role": "user", "content": user_content},
                 ],
                 max_completion_tokens=request.max_tokens,
                 # MiniMax rejects 0 although it is useful for local intent models.
                 temperature=max(0.01, min(request.temperature, 1.0)),
-                extra_body={"reasoning_split": True},
+                extra_body={"reasoning_split": self._reasoning_split},
             )
         except Exception as error:
             raise RuntimeError(f"MiniMax request failed: {error}") from error
@@ -137,10 +161,17 @@ class MiniMaxGeneration:
         )
 
     def _complete_anthropic(self, request: ModelRequest) -> str | None:
+        user_content: str | list[dict[str, Any]] = request.user_prompt
+        if request.image_data_urls:
+            user_content = [{"type": "text", "text": request.user_prompt}]
+            user_content.extend(
+                _anthropic_image_block(image_url)
+                for image_url in request.image_data_urls
+            )
         payload = {
             "model": self._model,
             "system": request.system_prompt,
-            "messages": [{"role": "user", "content": request.user_prompt}],
+            "messages": [{"role": "user", "content": user_content}],
             "max_tokens": request.max_tokens,
             "temperature": max(0.01, min(request.temperature, 1.0)),
         }
@@ -167,3 +198,21 @@ class MiniMaxGeneration:
             ),
             None,
         )
+
+
+def _anthropic_image_block(image_url: str) -> dict[str, Any]:
+    """把 Runtime 图片 URI 转成 Anthropic 兼容的 image content block。"""
+    if image_url.startswith("data:") and ";base64," in image_url:
+        header, data = image_url.split(";base64,", 1)
+        return {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": header.removeprefix("data:"),
+                "data": data,
+            },
+        }
+    return {
+        "type": "image",
+        "source": {"type": "url", "url": image_url},
+    }

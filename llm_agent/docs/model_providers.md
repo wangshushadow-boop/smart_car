@@ -17,12 +17,12 @@ SpeechBackend     接收最终文本并返回标准 WAV
 | Provider | 文本生成 | 图像输入 | 音频输入 | 语音输出 |
 | --- | ---: | ---: | ---: | ---: |
 | `minicpm` | 是 | 是 | 是 | 否（当前服务无安全的独立 TTS） |
-| `minimax` | 是 | 否 | 否 | 云端 T2A WAV |
+| `minimax` | 是 | 是（M3） | 否 | 云端 T2A WAV |
 | `piper` | 不适用 | 不适用 | 不适用 | 本地 WAV |
 
-MiniMax 的 OpenAI 兼容文本接口当前不接受图像、音频或视频。选择 `generation.provider=minimax` 后，
-纯文本请求可以正常工作；包含不支持模态的统一请求会在发出网络请求前被拒绝。完整的云端语音对话
-还需要后续增加 ASR/转写 provider，或由本地 MiniCPM 先产生转写。
+MiniMax-M3 的 OpenAI/Anthropic 兼容接口支持文本和图片；适配器会把 Runtime 的图片 data URL 转成
+对应协议的图片内容块。M3 不直接接收音频，语音请求会由 Qwen3-ASR 自动转写后再调用 MiniMax；
+视频仍会按照能力声明过滤。MiniCPM 则直接接收文本、图片、音频和视频，无需 ASR。
 
 ## 配置
 

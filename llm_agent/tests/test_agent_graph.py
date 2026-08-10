@@ -4,7 +4,9 @@ import unittest
 from threading import Event
 
 from llm_agent.agent.graph import build_graph
+from llm_agent.asr import TranscriptionResponse
 from llm_agent.conversation import ConversationTurn
+from llm_agent.models import GenerationCapabilities
 from llm_agent.models.types import ModelResponse, SpeechResponse
 from llm_agent.runtime import ContentPart, ContentType, RuntimeRequest
 from llm_agent.tools.registry import ToolRegistry
@@ -12,13 +14,48 @@ from llm_agent.tools.vehicle.status import RobotStatus
 
 
 class FakeModel:
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(
+        self,
+        responses: list[str],
+        *,
+        audio_input: bool = True,
+        image_input: bool = False,
+        video_input: bool = False,
+        intent_max_tokens: int = 160,
+        intent_temperature: float = 0.0,
+        response_max_tokens: int = 256,
+        response_temperature: float = 0.2,
+    ) -> None:
         self.responses = iter(responses)
         self.requests = []
+        self.capabilities = GenerationCapabilities(
+            audio_input=audio_input,
+            image_input=image_input,
+            video_input=video_input,
+            intent_max_tokens=intent_max_tokens,
+            intent_temperature=intent_temperature,
+            response_max_tokens=response_max_tokens,
+            response_temperature=response_temperature,
+        )
 
     def complete(self, request) -> ModelResponse:
         self.requests.append(request)
         return ModelResponse(text=next(self.responses), provider="fake-model")
+
+
+class FakeAsr:
+    provider_name = "fake-asr"
+
+    def __init__(self, text: str = "", error: Exception | None = None) -> None:
+        self.text = text
+        self.error = error
+        self.requests = []
+
+    def transcribe(self, request) -> TranscriptionResponse:
+        self.requests.append(request)
+        if self.error:
+            raise self.error
+        return TranscriptionResponse(text=self.text, provider=self.provider_name)
 
 
 class FakeTts:
@@ -75,6 +112,37 @@ def invoke(graph, request: RuntimeRequest) -> dict:
 
 
 class AgentGraphTest(unittest.TestCase):
+    def test_intent_uses_selected_model_token_budget(self) -> None:
+        model = FakeModel(
+            [
+                '{"intent":"action","tool_name":"move_relative",'
+                '"arguments":{"distance_m":0.5},"reason":"前进"}'
+            ],
+            intent_max_tokens=2048,
+            intent_temperature=0.01,
+        )
+
+        invoke(build_graph(model=model, tts=FakeTts()), make_request("前进半米"))
+
+        self.assertEqual(model.requests[0].max_tokens, 2048)
+        self.assertEqual(model.requests[0].temperature, 0.01)
+
+    def test_response_uses_selected_model_generation_parameters(self) -> None:
+        model = FakeModel(
+            [
+                '{"intent":"chat","tool_name":null,"arguments":{},'
+                '"reason":"问候"}',
+                "你好。",
+            ],
+            response_max_tokens=2048,
+            response_temperature=0.3,
+        )
+
+        invoke(build_graph(model=model, tts=FakeTts()), make_request("你好"))
+
+        self.assertEqual(model.requests[1].max_tokens, 2048)
+        self.assertEqual(model.requests[1].temperature, 0.3)
+
     def test_history_is_used_for_response_but_not_motion_intent(self) -> None:
         model = FakeModel([
             '{"intent":"chat","tool_name":null,"arguments":{},"reason":"追问"}',
@@ -118,10 +186,14 @@ class AgentGraphTest(unittest.TestCase):
         self.assertIn(response_output, logs)
 
     def test_intent_uses_audio_without_visual_distraction(self) -> None:
-        model = FakeModel([
-            '{"intent":"chat","tool_name":null,"arguments":{},"reason":"询问画面"}',
-            "画面内容正常。",
-        ])
+        model = FakeModel(
+            [
+                '{"intent":"chat","tool_name":null,"arguments":{},'
+                '"reason":"询问画面"}',
+                "画面内容正常。",
+            ],
+            image_input=True,
+        )
         request = RuntimeRequest(
             request_id="multimodal-intent",
             source="test",
@@ -148,6 +220,106 @@ class AgentGraphTest(unittest.TestCase):
         # 最终回答仍然保留全部模态，不影响看图问答。
         self.assertEqual(len(model.requests[1].audio_data_urls), 1)
         self.assertEqual(len(model.requests[1].image_data_urls), 1)
+
+    def test_audio_is_transcribed_when_generation_model_lacks_audio(self) -> None:
+        model = FakeModel(
+            [
+                '{"intent":"skill","tool_name":null,'
+                '"skill_name":"motion_sequence","arguments":{"steps":['
+                '{"action":"move","distance_m":-0.5},'
+                '{"action":"rotate","direction":"left","angle_deg":90}'
+                ']},"reason":"组合运动"}'
+            ],
+            audio_input=False,
+        )
+        asr = FakeAsr("向后移动半米，然后向左转九十度")
+        request = RuntimeRequest(
+            request_id="asr-motion",
+            source="test",
+            inputs=[
+                ContentPart(
+                    type=ContentType.AUDIO,
+                    mime_type="audio/wav",
+                    data=b"RIFF-fake",
+                )
+            ],
+            response_modalities=[ContentType.TEXT],
+        )
+
+        result = invoke(build_graph(model=model, tts=FakeTts(), asr=asr), request)
+
+        self.assertEqual(len(asr.requests), 1)
+        self.assertEqual(model.requests[0].audio_data_urls, [])
+        self.assertIn("向后移动半米，然后向左转九十度", model.requests[0].user_prompt)
+        self.assertEqual(result["transcript"], "向后移动半米，然后向左转九十度")
+        self.assertEqual(result["asr_backend"], "fake-asr")
+        self.assertEqual(len(result["command"]["steps"]), 2)
+
+    def test_unsupported_media_is_filtered_from_final_response(self) -> None:
+        model = FakeModel(
+            [
+                '{"intent":"chat","tool_name":null,"arguments":{},'
+                '"reason":"普通语音问答"}',
+                "已经收到语音。",
+            ],
+            audio_input=False,
+        )
+        asr = FakeAsr("你好")
+        request = RuntimeRequest(
+            request_id="text-model-multimodal",
+            source="test",
+            inputs=[
+                ContentPart(
+                    type=ContentType.AUDIO,
+                    mime_type="audio/wav",
+                    data=b"RIFF-fake",
+                ),
+                ContentPart(
+                    type=ContentType.IMAGE,
+                    mime_type="image/jpeg",
+                    data=b"jpeg-fake",
+                ),
+                ContentPart(
+                    type=ContentType.VIDEO,
+                    mime_type="video/mp4",
+                    data=b"video-fake",
+                ),
+            ],
+            response_modalities=[ContentType.TEXT],
+        )
+
+        result = invoke(
+            build_graph(model=model, tts=FakeTts(), asr=asr), request
+        )
+
+        self.assertEqual(result["answer"], "已经收到语音。")
+        self.assertEqual(model.requests[1].audio_data_urls, [])
+        self.assertEqual(model.requests[1].image_data_urls, [])
+        self.assertEqual(model.requests[1].video_data_urls, [])
+        self.assertIn("你好", model.requests[1].user_prompt)
+
+    def test_asr_failure_never_executes_motion(self) -> None:
+        model = FakeModel([], audio_input=False)
+        asr = FakeAsr(error=RuntimeError("offline"))
+        request = RuntimeRequest(
+            request_id="asr-failure",
+            source="test",
+            inputs=[
+                ContentPart(
+                    type=ContentType.AUDIO,
+                    mime_type="audio/wav",
+                    data=b"RIFF-fake",
+                )
+            ],
+            response_modalities=[ContentType.TEXT],
+        )
+
+        result = invoke(build_graph(model=model, tts=FakeTts(), asr=asr), request)
+
+        self.assertEqual(model.requests, [])
+        self.assertNotIn("command", result)
+        self.assertIn("ASR", result["error"])
+        self.assertIn("没有听清", result["answer"])
 
     def test_chat_skips_tools(self) -> None:
         model = FakeModel([

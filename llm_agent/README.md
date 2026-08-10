@@ -154,6 +154,41 @@ vLLM-Omni 服务没有安全的独立 TTS 接口，因此默认组合是 MiniCPM
 export MINIMAX_API_KEY='请替换为云端密钥'
 ```
 
+每个 generation provider 在同一个 `providers.<name>` 配置段声明自己的生成参数：
+
+```yaml
+providers:
+  minimax:
+    intent_max_tokens: 2048
+    intent_temperature: 0.01
+    response_max_tokens: 2048
+    response_temperature: 0.2
+    reasoning_split: true
+```
+
+`intent_*` 用于结构化意图 JSON，`response_*` 用于最终自然语言回复。Agent 节点会读取当前已选择
+provider 的参数，切换 MiniCPM/MiniMax 时自动切换，不需要修改节点代码。`model`、`base_url`、
+`timeout_seconds` 和 `max_retries` 也分别保留在该 provider 配置段；`reasoning_split` 仅由 MiniMax
+适配器使用。
+
+### 语音输入自动路由
+
+Agent 根据 generation provider 的 `audio_input` 能力自动选择输入路径，无需额外路由配置：
+
+- `minicpm` 支持音频，WAV 直接交给 MiniCPM；Qwen3-ASR Worker 不会启动。
+- `minimax` 不支持音频，WAV 先由本地 Qwen3-ASR-0.6B 转写，再把文字交给 MiniMax。
+
+首次部署 ASR 环境和模型：
+
+```bash
+cd /mnt/d/work/smart_car
+./llm_agent/scripts/install_qwen3_asr.sh
+```
+
+默认环境位于 `/mnt/d/AI/venvs/qwen3-asr`，模型位于
+`/mnt/d/AI/models/Qwen3-ASR-0.6B`。两者与 MiniCPM 环境隔离；ASR 失败、超时或返回空文本时，
+本轮请求降级为 unknown 且不会生成车辆运动任务。
+
 当前 Agent 已按以下边界组织：
 
 ```text

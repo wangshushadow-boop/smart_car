@@ -73,6 +73,8 @@ class AgentState(TypedDict, total=False):
     progress_callback: object
     conversation_history: list[ConversationTurn]
     user_summary: str
+    transcript: str
+    asr_backend: str
     intent: IntentDecision
     tool_call: object
     skill_call: SkillCall

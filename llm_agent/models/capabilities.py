@@ -6,11 +6,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GenerationCapabilities(BaseModel):
-    """推理 Provider 输入能力声明。"""
+    """推理 Provider 的输入能力与推荐生成参数。"""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -19,6 +19,12 @@ class GenerationCapabilities(BaseModel):
     audio_input: bool = False
     video_input: bool = False
     tool_calling: bool = False
+    # 推理模型的思考 token 也可能计入输出上限。各 Provider 声明适合自身的
+    # 意图识别预算，Agent 节点不再硬编码同一个值。
+    intent_max_tokens: int = Field(default=160, ge=1, le=4096)
+    intent_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    response_max_tokens: int = Field(default=256, ge=1, le=4096)
+    response_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
 
 class SpeechCapabilities(BaseModel):
