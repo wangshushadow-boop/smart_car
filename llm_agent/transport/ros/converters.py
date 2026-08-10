@@ -1,4 +1,8 @@
-"""ROS 全模态消息与 Runtime 领域对象之间的双向转换。"""
+"""ROS 全模态消息与 Runtime 领域对象之间的双向转换。
+
+只做字段级映射，不做业务判断；这样上层（`AgentActionServer`）逻辑可以
+保持简短，且便于单元测试独立验证转换正确性。
+"""
 
 from __future__ import annotations
 
@@ -29,7 +33,13 @@ _CONTENT_TO_ROS = {value: key for key, value in _ROS_TO_CONTENT.items()}
 
 
 def request_from_ros(message, *, max_inline_bytes: int) -> RuntimeRequest:
-    """校验 ROS Goal，并转换成不依赖 ROS 的 RuntimeRequest。"""
+    """把 ROS Goal 校验后转换为不依赖 ROS 的 RuntimeRequest。
+
+    校验项：
+    - 内联二进制总大小（`max_inline_bytes` 防止 Action Goal 撑爆总线）。
+    - 时间戳（`created_at` 为 0 时退化为当前时间）。
+    - 内容类型（未知枚举会被 Pydantic 在 RuntimeRequest 内拒掉）。
+    """
     inline_size = sum(len(part.data) for part in message.inputs)
     if inline_size > max_inline_bytes:
         raise ValueError(
@@ -84,6 +94,7 @@ def progress_to_ros(progress: RuntimeProgress) -> RosAgentProgress:
 
 
 def _content_from_ros(message: RosAgentContent) -> ContentPart:
+    """单块 ROS 内容 → Runtime 领域对象。"""
     content_type = _ROS_TO_CONTENT.get(message.content_type)
     if content_type is None:
         raise ValueError(f"未知 Agent 内容类型：{message.content_type}")
@@ -100,11 +111,13 @@ def _content_from_ros(message: RosAgentContent) -> ContentPart:
 
 
 def _content_to_ros(part: ContentPart) -> RosAgentContent:
+    """单块 Runtime 领域对象 → ROS 内容。"""
     message = RosAgentContent()
     message.content_type = _CONTENT_TO_ROS[part.type]
     message.name = part.name
     message.mime_type = part.mime_type
     message.text = part.text
+    # ROS 消息的 bytes 字段使用 `uint8[]`，需要先转成 list。
     message.data = list(part.data)
     message.uri = part.uri
     message.topic = part.topic
@@ -113,6 +126,7 @@ def _content_to_ros(part: ContentPart) -> RosAgentContent:
 
 
 def _load_json_object(value: str) -> dict:
+    """解析 `metadata_json` 字段；空串视为空 dict，非 dict 直接抛错。"""
     if not value:
         return {}
     payload = json.loads(value)

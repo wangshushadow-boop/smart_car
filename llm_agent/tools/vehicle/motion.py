@@ -1,4 +1,10 @@
-"""生成由树莓派本地执行的受约束运动任务。"""
+"""生成由树莓派本地执行的受约束运动任务。
+
+三个 Tool 全部只产出声明式 JSON 任务，标注统一的 `MOTION_TASK_SCHEMA`：
+- `MoveRelativeTool`：相对直线运动，正负号约定距离方向。
+- `RotateRelativeTool`：相对旋转，优先使用显式 `direction`，兼容旧模型带符号角度。
+- `StopMotionTool`：取消当前 Nav2 Action。
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from ..context import ToolContext
 
 
+# 树莓派侧 Nav2 客户端据此判断任务类型；版本号 v1 兼容旧消息体。
 MOTION_TASK_SCHEMA = "small_car.motion.v1"
 
 
@@ -17,11 +24,13 @@ class MoveRelativeArguments(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # 距离边界 ±2.0 m：与控制律的稳定区间一致，超过会被直接拒绝。
     distance_m: float = Field(ge=-2.0, le=2.0)
 
     @field_validator("distance_m")
     @classmethod
     def reject_tiny_distance(cls, value: float) -> float:
+        # 拒绝过小的位移，避免模型生成无意义的"微前进"。
         if abs(value) < 0.05:
             raise ValueError("移动距离的绝对值必须至少为 0.05 米")
         return value
@@ -44,6 +53,8 @@ class RotateRelativeArguments(BaseModel):
 
 
 class StopMotionArguments(BaseModel):
+    """停止任务无入参；保留空模型便于未来扩展（如区域限制）。"""
+
     model_config = ConfigDict(extra="forbid")
 
 

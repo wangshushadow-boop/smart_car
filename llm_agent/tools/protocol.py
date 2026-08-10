@@ -1,4 +1,9 @@
-"""Tool implementation contract."""
+"""Tool 实现契约。
+
+`AgentTool` 是所有底盘 Tool 必须遵循的协议：声明名字、描述、参数模型，
+并实现同步执行的 `execute`。返回值必须是 JSON 兼容 dict，便于 ROS 层
+序列化到 `AgentContent`。
+"""
 
 from __future__ import annotations
 

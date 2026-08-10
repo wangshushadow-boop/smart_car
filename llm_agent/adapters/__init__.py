@@ -1,1 +1,6 @@
-"""Adapters for external systems."""
+"""外部系统适配器包。
+
+把第三方能力（TTS、图像、HTTP 等）封装为统一接口，供 `models/` 与
+`transport/` 复用。每个子包对应一种能力，新增第三方依赖时请新建子包
+而非在此处堆叠。
+"""

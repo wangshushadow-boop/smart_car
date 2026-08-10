@@ -1,4 +1,8 @@
-"""MiniMax synchronous cloud TTS using the official HTTP T2A endpoint."""
+"""MiniMax 云端同步 TTS（官方 HTTP T2A 端点）。
+
+通过 Bearer Token 鉴权，返回十六进制编码的 WAV 字节流；本地解析
+WAV 头以校验采样率/声道数。整段实现不依赖第三方 SDK，避免拖慢启动。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,8 @@ from ..types import SpeechRequest, SpeechResponse
 
 
 class MiniMaxSpeech:
+    """MiniMax 同步 TTS Provider。"""
+
     provider_name = "minimax"
     capabilities = SpeechCapabilities(
         wav_output=True, streaming=False, configurable_voice=True
@@ -21,6 +27,7 @@ class MiniMaxSpeech:
     def __init__(self, settings: dict | None = None, opener=None) -> None:
         settings = settings or {}
         self._api_key = os.getenv("MINIMAX_API_KEY", "")
+        # 允许测试通过 opener 注入伪造的 urlopen；正式运行必须提供 API Key。
         if not self._api_key and opener is None:
             raise RuntimeError("MINIMAX_API_KEY is required for MiniMax speech")
         self._endpoint = os.getenv(
@@ -42,6 +49,7 @@ class MiniMaxSpeech:
         self._opener = opener or urlopen
 
     def synthesize(self, request: SpeechRequest) -> SpeechResponse:
+        """调用 MiniMax T2A 并校验返回的 WAV 流。"""
         payload = {
             "model": self._model,
             "text": request.text,

@@ -1,4 +1,8 @@
-"""MiniMax text generation through its OpenAI-compatible API."""
+"""MiniMax 云端文本推理（仅支持文本）。
+
+仅支持纯文本输入，多模态请求会被显式拒绝；本地意图节点不会触发这个
+分支，只有 Chat 节点把多模态请求误路由到此处才会报错。
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,8 @@ from ..types import ModelRequest, ModelResponse
 
 
 class MiniMaxGeneration:
+    """MiniMax 文本推理 Provider。"""
+
     provider_name = "minimax"
     capabilities = GenerationCapabilities(
         text_input=True,
@@ -42,6 +48,7 @@ class MiniMaxGeneration:
         )
 
     def complete(self, request: ModelRequest) -> ModelResponse:
+        """执行单次推理；多模态请求会被立刻抛错以避免静默丢失。"""
         unsupported = []
         if request.image_data_urls:
             unsupported.append("image")

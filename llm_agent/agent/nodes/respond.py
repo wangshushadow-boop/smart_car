@@ -1,4 +1,14 @@
-"""Final text response and independent speech synthesis nodes."""
+"""最终文字回复与独立语音合成节点。
+
+包含两个 LangGraph 节点：
+- `create_response_node`：根据意图分发——结构化动作走模板回复，其他走模型。
+- `create_speech_node`：调用独立 TTS 后端把 answer 转成 WAV。
+
+设计要点：
+- 动作/技能类不调模型，避免模型改写"前进 0.5 米"成含糊描述。
+- 模板回复里把 distance/angle 翻译为"前进/后退/左转/右转"，方向与数值一目了然。
+- 语音合成失败时只记录 error，文字结果仍保留，避免整轮被判无响应。
+"""
 
 from __future__ import annotations
 
@@ -20,11 +30,14 @@ _MODEL_OUTPUT_LOGGER = logging.getLogger("llm_agent.model_output")
 
 
 def create_response_node(model: ModelBackend, prompts: PromptSet):
+    """构造最终回复节点。"""
+
     def respond(state: dict) -> dict:
         progress = state.get("progress_callback")
         if progress:
             progress("generating", 65, "正在生成最终回复")
         decision = state["intent"]
+        # 结构化动作/技能走模板：避免模型改写关键数值。
         if decision.intent == IntentType.SKILL:
             command = state.get("command")
             if not command:
@@ -64,6 +77,7 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
         if decision.intent == IntentType.UNKNOWN:
             return {"answer": "抱歉，我没有听清或理解这个请求，请再说一次。"}
 
+        # CHAT / 状态查询：调模型生成自然语言回复。
         request = state["request"]
         text, audio_urls, image_urls, video_urls = request_inputs(request)
         context = [prompts.response, prompts.safety]
@@ -110,11 +124,14 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
 
 
 def create_speech_node(tts: SpeechSynthesizer):
+    """构造语音合成节点：TTS 失败时仅写 error，不影响 answer。"""
+
     def synthesize_speech(state: dict) -> dict:
         answer = state.get("answer", "")
         if not answer:
             return {}
         request = state["request"]
+        # 调用方没声明要音频模态，直接跳过 TTS，省掉无意义的离线推理。
         if ContentType.AUDIO not in request.response_modalities:
             return {}
         progress = state.get("progress_callback")

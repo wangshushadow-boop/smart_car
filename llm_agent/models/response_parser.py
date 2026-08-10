@@ -1,4 +1,10 @@
-"""Sanitize user-facing text and parse structured intent decisions."""
+"""清洗面向用户的文本，并解析模型结构化意图输出。
+
+包含两个工具函数：
+- `sanitize_spoken_answer`：剥离 <think>/工具调用/Markdown 等，只保留可读回答。
+- `parse_intent_decision`：从模型输出里抽取 JSON，构造 `IntentDecision`，
+  并对旋转任务做方向归一化与安全降级。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +17,14 @@ from llm_agent.agent.state import IntentDecision, IntentType
 
 
 def sanitize_spoken_answer(text: str) -> str:
-    """Keep only the final user-facing answer before speech synthesis."""
+    """只保留最终可读回答，去掉思考标签、Markdown 与工具调用残留。
+
+    处理顺序：
+    1. 抽取 `[AI助手]` 段（模型分多段时的最后一段）。
+    2. 去掉 `<think>` / `<tool_call>` / ` ```代码块``` ` 等非回答片段。
+    3. 去掉前缀 "Assistant:" / "回答：" 等角色标签。
+    4. 清理 Markdown 标记和多余空白。
+    """
 
     assistant_segments = re.findall(
         r"\[AI助手\]\s*(?!\[)([^\[\n]+)", text, flags=re.IGNORECASE
@@ -21,6 +34,7 @@ def sanitize_spoken_answer(text: str) -> str:
     elif re.match(r"\s*<think\b", text, flags=re.IGNORECASE) and not re.search(
         r"</think>", text, flags=re.IGNORECASE
     ):
+        # 模型以思考标签开头但没有正确闭合：视为无效回答。
         return ""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(
@@ -36,12 +50,19 @@ def sanitize_spoken_answer(text: str) -> str:
         text,
         flags=re.IGNORECASE,
     )
-    text = re.sub(r"[`*_#>|]", "", text)
+    text = re.sub(r"[*`_#>|]", "", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
 def _normalize_rotation_direction(decision: IntentDecision) -> IntentDecision:
-    """把明确的左右语义转换成工具层可稳定处理的方向参数。"""
+    """把明确的左右语义转换成工具层可稳定处理的方向参数。
+
+    只对 ACTION + rotate_relative 起作用；其他意图直接透传。
+    处理策略：
+    - `direction` 非法值 → 降级为 UNKNOWN。
+    - 未提供 direction 但能唯一确定 → 按 `reason` 推断。
+    - 角度必须有限且为正数。
+    """
 
     if (
         decision.intent != IntentType.ACTION
@@ -57,6 +78,7 @@ def _normalize_rotation_direction(decision: IntentDecision) -> IntentDecision:
             intent=IntentType.UNKNOWN, reason="旋转任务 direction 字段无效"
         )
     if direction is None:
+        # 兼容部分模型未填 direction 但在 reason 里说明方向的输出。
         reason = decision.reason.lower()
         has_left = "左转" in reason or bool(re.search(r"\bturn\s+left\b", reason))
         has_right = "右转" in reason or bool(re.search(r"\bturn\s+right\b", reason))
@@ -84,7 +106,15 @@ def _normalize_rotation_direction(decision: IntentDecision) -> IntentDecision:
 
 
 def parse_intent_decision(text: str) -> IntentDecision:
-    """解析模型结构化输出，并安全兼容单引号 Python 字面量。"""
+    """解析模型结构化输出，并安全兼容单引号 Python 字面量。
+
+    解码顺序：
+    1. 去掉 ```json ... ``` 包裹。
+    2. 用正则提取第一对 `{...}`。
+    3. 优先 `json.loads`；失败时尝试 `ast.literal_eval`（处理 MiniCPM 偶发
+       的单引号字典输出），且 `literal_eval` 只解析字面量不执行代码。
+    4. 通过 Pydantic 校验后做旋转方向归一化。
+    """
 
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.IGNORECASE)
     match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)

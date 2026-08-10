@@ -1,4 +1,8 @@
-"""AgentRuntime 使用的统一全模态领域契约。"""
+"""AgentRuntime 使用的统一全模态领域契约。
+
+这些 Pydantic 模型是 Runtime 与外部传输层（ROS、HTTP、单元测试）之间
+唯一的边界类型，刻意不引入 ROS 概念，方便多端复用同一套 Runtime。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +25,14 @@ class ContentType(str, Enum):
 
 
 class ContentPart(BaseModel):
-    """单个内容块；二进制内容可内联，也可保留外部引用。"""
+    """单个内容块；二进制内容可内联，也可保留外部引用。
+
+    设计要点：
+    - 文本 / JSON 内容仅使用 `text` 字段，避免大字段拼接歧义。
+    - 二进制模态至少需要 `data` / `uri` / `topic` 其一，方便内联或引用。
+    - `name` / `mime_type` / `metadata` 用于在响应里区分输出块（如
+      `answer` / `robot_task` / `answer_audio`）。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -45,7 +56,14 @@ class ContentPart(BaseModel):
 
 
 class RuntimeRequest(BaseModel):
-    """所有调用方进入 Runtime 的唯一请求类型。"""
+    """所有调用方进入 Runtime 的唯一请求类型。
+
+    关键字段：
+    - `session_id`：用于短期多轮对话；空字符串表示不启用会话。
+    - `response_modalities`：声明调用方需要的输出模态，至少含 `TEXT`。
+    - `allow_tools`：false 强制本轮只走对话路径，不调用任何 Tool/Skill。
+    - `stream_progress`：是否订阅 progress 回调；订阅方按 stage 处理。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -66,12 +84,18 @@ class RuntimeRequest(BaseModel):
         # 当前回复节点始终生成文字；音频等其他模态在文字基础上派生。
         if ContentType.TEXT not in self.response_modalities:
             self.response_modalities.insert(0, ContentType.TEXT)
+        # 去重并保持顺序，避免 transport 层反复发相同模态。
         self.response_modalities = list(dict.fromkeys(self.response_modalities))
         return self
 
 
 class RuntimeProgress(BaseModel):
-    """Runtime 向传输层报告的粗粒度执行进度。"""
+    """Runtime 向传输层报告的粗粒度执行进度。
+
+    进度阶段（约定）：`queued` / `understanding` / `safety_check` /
+    `tool_running` / `skill_running` / `generating` / `synthesizing` /
+    `completed`。`partial_outputs` 用于在最终响应前预发送中间产物。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -83,7 +107,13 @@ class RuntimeProgress(BaseModel):
 
 
 class RuntimeResponse(BaseModel):
-    """Runtime 的统一全模态结果。"""
+    """Runtime 的统一全模态结果。
+
+    `status` 取值：
+    - `completed`：正常完成；如有部分降级会在 `error_code` 中标记。
+    - `cancelled`：被调用方取消。
+    - `failed`：图内部抛错或前置校验失败。
+    """
 
     model_config = ConfigDict(extra="forbid")
 

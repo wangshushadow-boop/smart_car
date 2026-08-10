@@ -1,4 +1,11 @@
-"""Intent understanding node."""
+"""意图理解节点。
+
+只调用一次模型，输出 `IntentDecision`，必要时附带 `tool_call` 或 `skill_call`。
+设计原则：
+- 视觉内容（图像 / 视频）不参与意图识别，避免摄像头干扰语音里的"左/右"。
+- `temperature=0.0` 提高 JSON 输出的稳定性。
+- 完整原始文本会写入 `llm_agent.model_output` logger，便于排查模型误识别。
+"""
 
 from __future__ import annotations
 
@@ -21,6 +28,12 @@ _MODEL_OUTPUT_LOGGER = logging.getLogger("llm_agent.model_output")
 def create_understand_node(
     model: ModelBackend, prompts: PromptSet, skill_catalog: str = ""
 ):
+    """构造意图理解节点闭包。
+
+    `skill_catalog` 由 `SkillRegistry.catalog_prompt()` 生成，仅暴露 Skill 名 +
+    一行描述，避免把所有细节塞进模型上下文。
+    """
+
     def understand(state: dict) -> dict:
         progress = state.get("progress_callback")
         if progress:
@@ -60,6 +73,7 @@ def create_understand_node(
                 decision.model_dump_json(),
             )
         except Exception as error:
+            # 模型失败：降级为 UNKNOWN，让后续节点走自然语言回复而不是直接动车辆。
             decision = IntentDecision(
                 intent=IntentType.UNKNOWN, reason=f"意图识别失败：{error}"
             )

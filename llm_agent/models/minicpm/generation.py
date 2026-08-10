@@ -1,4 +1,8 @@
-"""MiniCPM-o generation through the local OpenAI-compatible endpoint."""
+"""通过本地 OpenAI 兼容端点调用 MiniCPM-o 多模态推理。
+
+模型侧支持文本/图片/音频/视频，但 `ModelRequest` 暂未暴露视频字段；通过
+环境变量（`MINICPM_BASE_URL` 等）允许临时切换端点和超时，不修改代码。
+"""
 
 from __future__ import annotations
 
@@ -10,10 +14,12 @@ from ..types import ModelRequest, ModelResponse
 
 
 class ModelBackendError(RuntimeError):
-    """Normalized model transport or response failure."""
+    """归一化的模型传输或响应错误（被 Runtime 捕获并转为失败响应）。"""
 
 
 class MiniCpmGeneration:
+    """MiniCPM-o 多模态推理 Provider。"""
+
     provider_name = "minicpm"
     capabilities = GenerationCapabilities(
         text_input=True,
@@ -26,6 +32,7 @@ class MiniCpmGeneration:
 
     def __init__(self, settings: dict | None = None, client: Any | None = None) -> None:
         settings = settings or {}
+        # 环境变量允许在不修改代码的情况下临时覆盖连接参数（方便本地切换端口）。
         base_url = os.getenv(
             "MINICPM_BASE_URL", settings.get("base_url", "http://127.0.0.1:8099/v1")
         )
@@ -39,6 +46,7 @@ class MiniCpmGeneration:
             os.getenv("MINICPM_MAX_RETRIES", str(settings.get("max_retries", 1)))
         )
         if client is None:
+            # 延迟 import openai，避免 Provider 加载拖慢 Agent 启动。
             from openai import OpenAI
 
             client = OpenAI(
@@ -54,6 +62,7 @@ class MiniCpmGeneration:
         )
 
     def complete(self, request: ModelRequest) -> ModelResponse:
+        """把多模态请求翻译为 OpenAI Chat Completions 的多模态 content 块。"""
         content: list[dict] = [{"type": "text", "text": request.user_prompt}]
         for image_url in request.image_data_urls:
             content.append(

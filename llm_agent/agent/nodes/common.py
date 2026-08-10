@@ -1,4 +1,9 @@
-"""模型节点共享的全模态请求转换。"""
+"""模型节点共享的全模态请求转换。
+
+`understand_intent`、`generate_response` 等节点都需要把 `RuntimeRequest`
+拆成 4 路媒体字段；为了不让每个节点都重复导入 runtime/media，这里提供一个
+薄包装。同时这个间接层也用于在测试里替换 mock 输入。
+"""
 
 from __future__ import annotations
 

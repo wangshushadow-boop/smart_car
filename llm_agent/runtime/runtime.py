@@ -1,4 +1,14 @@
-"""Agent 图的独立执行边界。"""
+"""Agent 图的独立执行边界。
+
+`AgentRuntime` 把 LangGraph 与对话存储封装成一次请求一个调用的同步入口，
+方便 ROS Action Server、调试 Web、单元测试共享同一套编排。
+
+关键约束：
+- 不依赖 ROS 类型；传入的是纯领域对象 `RuntimeRequest`。
+- 串行执行：`_turn_lock` 保证同一时刻只跑一轮 LangGraph，
+  避免多 Goal 并发触发短期对话的竞态。
+- 进度回调只接受 Runtime 自身定义的 `RuntimeProgress`，不泄漏 ROS 概念。
+"""
 
 from __future__ import annotations
 
@@ -20,6 +30,8 @@ from .contracts import (
 
 
 class InvokableGraph(Protocol):
+    """LangGraph 编译产物的最小契约，便于测试注入假实现。"""
+
     def invoke(self, input: dict) -> dict:
         """执行一轮 Agent 图。"""
 
@@ -37,7 +49,9 @@ class AgentRuntime:
     ) -> None:
         self._graph = graph
         self._conversation_store = conversation_store or NullConversationStore()
+        # `_stopping` 用于优雅停机；`stop()` 后新请求直接被拒。
         self._stopping = Event()
+        # 单轮锁：同一时刻只允许一个 Goal 走完整张图。
         self._turn_lock = Lock()
 
     def stop(self) -> None:
@@ -54,10 +68,13 @@ class AgentRuntime:
         progress_callback: ProgressCallback | None = None,
         cancel_token: Event | None = None,
     ) -> RuntimeResponse:
+        """单轮入口：恢复历史 → 驱动 LangGraph → 写回历史 → 打包响应。"""
         cancel_token = cancel_token or Event()
         started_at = monotonic()
 
         def report(stage: str, percent: int, message: str) -> None:
+            # 图内部 progress_callback 只关心 (阶段, 百分比, 文案)，
+            # ROS 反馈由 transport 层负责包装。
             if progress_callback and request.stream_progress:
                 progress_callback(
                     RuntimeProgress(
@@ -79,6 +96,7 @@ class AgentRuntime:
                 request.session_id
             )
             try:
+                # 把 Runtime 内部的回调、取消令牌、历史一次性传给图节点。
                 state = self._graph.invoke(
                     {
                         "request_id": request.request_id,
@@ -94,12 +112,14 @@ class AgentRuntime:
             if cancel_token.is_set():
                 return self._cancelled_response(request)
 
+            # 写回会话历史：纯文本形式，音频/图片不持久化。
             answer = state.get("answer", "（无回复）")
             user_summary = state.get("user_summary") or self._request_text(request)
             self._conversation_store.append_turn(
                 request.session_id, user_summary, answer
             )
 
+        # 把图内部 state 投影成统一的全模态 ContentPart 列表。
         outputs = [
             ContentPart(
                 type=ContentType.TEXT,
@@ -109,6 +129,7 @@ class AgentRuntime:
             )
         ]
         if state.get("command"):
+            # 声明式 ROS 任务（move/rotate/stop 或 motion_sequence 序列）。
             outputs.append(
                 ContentPart(
                     type=ContentType.JSON,
@@ -129,6 +150,7 @@ class AgentRuntime:
                 )
             )
         report("completed", 100, "Agent 请求处理完成")
+        # 即使 answer 缺失，也走 completed 分支以兼容部分降级。
         return RuntimeResponse(
             request_id=request.request_id,
             session_id=request.session_id,
@@ -146,6 +168,7 @@ class AgentRuntime:
 
     @staticmethod
     def _request_text(request: RuntimeRequest) -> str:
+        """从请求中提取纯文本输入，用于写回对话历史。"""
         return "\n".join(
             part.text.strip()
             for part in request.inputs
@@ -155,6 +178,7 @@ class AgentRuntime:
 
     @staticmethod
     def _cancelled_response(request: RuntimeRequest) -> RuntimeResponse:
+        """被调用方取消后的标准响应。"""
         return RuntimeResponse(
             request_id=request.request_id,
             session_id=request.session_id,
@@ -167,6 +191,7 @@ class AgentRuntime:
     def _error_response(
         request: RuntimeRequest, code: str, message: str
     ) -> RuntimeResponse:
+        """统一的失败响应包装，确保 transport 层只需判断 status。"""
         return RuntimeResponse(
             request_id=request.request_id,
             session_id=request.session_id,

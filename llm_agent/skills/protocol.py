@@ -1,4 +1,9 @@
-"""Skill 实现契约。"""
+"""Skill 实现契约。
+
+所有 Skill 必须遵守这一协议：
+- 仅返回声明式 `SkillPlan`，不接触 ROS、硬件或模型调用。
+- `arguments_model` 由 `SkillRegistry` 用来校验模型生成的高层参数。
+"""
 
 from __future__ import annotations
 
