@@ -27,6 +27,7 @@ class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_inline_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+    skills_enabled: bool = True
     conversation_enabled: bool = True
     conversation_max_turns: int = Field(default=8, ge=1, le=100)
     conversation_max_context_chars: int = Field(default=12_000, ge=256)

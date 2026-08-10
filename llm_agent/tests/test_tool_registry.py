@@ -71,6 +71,13 @@ class ToolRegistryTest(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(self.provider.calls, 0)
 
+    def test_validate_does_not_execute_tool(self) -> None:
+        error = self.registry.validate(
+            ToolCall(name="get_robot_status", arguments={})
+        )
+        self.assertIsNone(error)
+        self.assertEqual(self.provider.calls, 0)
+
     def test_times_out_slow_tool(self) -> None:
         self.registry.register(SlowTool())
         result = self.registry.execute(

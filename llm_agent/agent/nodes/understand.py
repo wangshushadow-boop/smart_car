@@ -9,6 +9,7 @@ from llm_agent.agent.state import IntentDecision, IntentType
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.models.response_parser import parse_intent_decision
 from llm_agent.models.types import ModelRequest
+from llm_agent.skills import SkillCall
 from llm_agent.tools.types import ToolCall
 
 from .common import request_inputs
@@ -17,7 +18,9 @@ from .common import request_inputs
 _MODEL_OUTPUT_LOGGER = logging.getLogger("llm_agent.model_output")
 
 
-def create_understand_node(model: ModelBackend, prompts: PromptSet):
+def create_understand_node(
+    model: ModelBackend, prompts: PromptSet, skill_catalog: str = ""
+):
     def understand(state: dict) -> dict:
         progress = state.get("progress_callback")
         if progress:
@@ -25,6 +28,8 @@ def create_understand_node(model: ModelBackend, prompts: PromptSet):
         request = state["request"]
         text, audio_urls, _image_urls, _video_urls = request_inputs(request)
         user_prompt = prompts.intent
+        if skill_catalog:
+            user_prompt += f"\n\n{skill_catalog}"
         if text:
             user_prompt += f"\n\n用户文字：{text}"
         try:
@@ -66,6 +71,10 @@ def create_understand_node(model: ModelBackend, prompts: PromptSet):
         if decision.tool_name:
             result["tool_call"] = ToolCall(
                 name=decision.tool_name, arguments=decision.arguments
+            )
+        if decision.skill_name:
+            result["skill_call"] = SkillCall(
+                name=decision.skill_name, arguments=decision.arguments
             )
         return result
 

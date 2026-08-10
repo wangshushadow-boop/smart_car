@@ -37,5 +37,28 @@ int main() {
   assert(!parser.Parse(
       R"({"schema":"other","action":"stop_motion"})", &error));
   assert(!parser.Parse("not-json", &error));
+
+  auto sequence = parser.ParseMany(
+      R"({"schema":"small_car.motion_sequence.v1","skill":"motion_sequence","steps":[)"
+      R"({"schema":"small_car.motion.v1","action":"move_relative","distance_m":1.0},)"
+      R"({"schema":"small_car.motion.v1","action":"rotate_relative","angle_deg":-90}]})",
+      &error);
+  assert(sequence.has_value());
+  assert(sequence->size() == 2U);
+  assert((*sequence)[0].action == agent_client::MotionAction::kMoveRelative);
+  assert((*sequence)[1].action == agent_client::MotionAction::kRotateRelative);
+  assert(std::abs((*sequence)[1].value + 90.0) < 1.0e-9);
+
+  // 组合任务仍逐步执行本地安全校验，且不允许嵌入停止操作。
+  assert(!parser.ParseMany(
+      R"({"schema":"small_car.motion_sequence.v1","skill":"motion_sequence","steps":[)"
+      R"({"schema":"small_car.motion.v1","action":"move_relative","distance_m":2.1},)"
+      R"({"schema":"small_car.motion.v1","action":"rotate_relative","angle_deg":90}]})",
+      &error));
+  assert(!parser.ParseMany(
+      R"({"schema":"small_car.motion_sequence.v1","skill":"motion_sequence","steps":[)"
+      R"({"schema":"small_car.motion.v1","action":"stop_motion"},)"
+      R"({"schema":"small_car.motion.v1","action":"rotate_relative","angle_deg":90}]})",
+      &error));
   return 0;
 }

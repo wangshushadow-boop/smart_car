@@ -162,6 +162,7 @@ llm_agent/
 ├── runtime/        # 与 ROS、Web、设备无关的全模态执行核心
 ├── transport/ros/  # RunAgent Action Server 和类型转换
 ├── agent/          # 状态、LangGraph 编排和业务节点
+├── skills/         # 高层任务编排，只能组合白名单 Tool
 ├── models/         # MiniCPM-o 后端及输出解析
 ├── tools/          # 强类型白名单工具和统一执行注册表
 ├── adapters/audio/ # Piper TTS 等外部音频适配
@@ -180,9 +181,9 @@ Agent 对外只有 `/car/agent/run` 一个 ROS 2 Action，Goal、Feedback 和 Re
 的客户端，不导入 Runtime、LangGraph、模型、工具或 TTS。启动方法见
 [独立 Web Debug](../agent_debug_web/README.md)。
 
-当前图支持闲聊、车辆状态查询意图、工具白名单校验和独立 TTS。唯一注册的
-`get_robot_status` 是只读工具；ROS 状态网关将在下一阶段接入，在此之前会明确返回不可用。
-车辆移动、导航和任意 ROS topic 发布均未开放。
+当前图支持闲聊、车辆状态查询、单步相对运动、组合运动 Skill、工具白名单校验和独立 TTS。
+`motion_sequence` 可以把 2～8 个明确运动步骤编排为任务序列；树莓派再次校验后通过 Nav2 串行执行。
+Agent Server 不直接发布速度或访问底盘，任意 ROS topic 发布也未开放。
 
 已验证的语音对话启动、检查和排错步骤见[Agent 语音对话链路](docs/agent_ros_voice_loop.md)。
 内部设计见[Agent 架构](docs/architecture.md)、[统一请求与状态](docs/agent_state.md)、[模型 Provider](docs/model_providers.md)、

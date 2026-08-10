@@ -25,6 +25,15 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
         if progress:
             progress("generating", 65, "正在生成最终回复")
         decision = state["intent"]
+        if decision.intent == IntentType.SKILL:
+            command = state.get("command")
+            if not command:
+                return {"answer": "组合任务没有通过安全校验，车辆不会移动。"}
+            steps = command.get("steps", [])
+            return {
+                "answer": f"好的，准备依次执行{len(steps)}个运动步骤。",
+                "command": command,
+            }
         if decision.intent == IntentType.ACTION:
             command = state.get("command")
             if not command:

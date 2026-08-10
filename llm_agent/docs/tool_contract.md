@@ -4,6 +4,7 @@
 
 模型只能请求工具，不能直接访问 `rclpy`、发布任意 topic 或构造底盘控制消息。只有注册进
 `ToolRegistry` 的工具才能执行。工具注册表是程序白名单，提示词中的工具列表只是辅助约束。
+Skill 同样不能绕过该注册表；它只把高层任务转换成一个或多个 Tool 调用。
 
 当前工具：
 
@@ -41,6 +42,30 @@
   "distance_m": 1.0
 }
 ```
+
+例如“前进一米，然后右转九十度”由 `motion_sequence` Skill 产生：
+
+```json
+{
+  "schema": "small_car.motion_sequence.v1",
+  "skill": "motion_sequence",
+  "steps": [
+    {
+      "schema": "small_car.motion.v1",
+      "action": "move_relative",
+      "distance_m": 1.0
+    },
+    {
+      "schema": "small_car.motion.v1",
+      "action": "rotate_relative",
+      "angle_deg": -90.0
+    }
+  ]
+}
+```
+
+树莓派客户端只接受 2～8 步，每一步继续遵守单步协议的范围和字段白名单，组合任务中不允许嵌入
+`stop_motion`。需要停止时应发送独立停止请求，客户端会取消当前 Nav2 Action 并清空剩余步骤。
 
 注册表返回统一结果：
 
@@ -99,3 +124,12 @@
 
 真实车辆状态接入仍应通过受控的 `VehicleGateway` 实现，并从 `ros_middleware` 的共享接口契约读取
 topic/service/action 名称。
+
+## 新增 Skill 流程
+
+1. 在 `skills/<domain>/` 或独立模块中定义严格的高层参数模型；
+2. 实现 `name`、`description`、`arguments_model` 和 `plan(arguments)`；
+3. 让 `plan` 只返回已存在的 `ToolCall`，不得直接访问 ROS 或硬件；
+4. 在 `runtime/factory.py` 中显式注册，并更新意图提示词；
+5. 测试 Skill 参数、每个 Tool 步骤、整体拒绝和取消行为；
+6. 新任务协议必须同步更新树莓派解析器，并保留设备侧第二次安全校验。

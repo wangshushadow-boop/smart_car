@@ -14,6 +14,8 @@ speech:
 runtime:
   # 防止调用方把过大的媒体直接塞入 DDS Action Goal。
   max_inline_bytes: 67108864
+  # Skill 只编排白名单 Tool；关闭后复合任务不会进入执行分支。
+  skills_enabled: true
   # 短期多轮上下文只保存在 Agent Server 内存中，重启后自动清空。
   conversation_enabled: true
   conversation_max_turns: 8

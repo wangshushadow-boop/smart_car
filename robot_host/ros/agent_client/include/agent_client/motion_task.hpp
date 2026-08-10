@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace agent_client {
 
@@ -29,6 +30,10 @@ class MotionTaskParser {
   /** 只接受 small_car.motion.v1 JSON，并在树莓派侧重新校验数值范围。 */
   std::optional<MotionTask> Parse(const std::string& json,
                                   std::string* error) const;
+
+  /** 同时接受单步 motion.v1 和最多 8 步的 motion_sequence.v1。 */
+  std::optional<std::vector<MotionTask>> ParseMany(
+      const std::string& json, std::string* error) const;
 
  private:
   MotionLimits limits_;

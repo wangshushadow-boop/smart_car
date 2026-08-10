@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from llm_agent.conversation import ConversationTurn
 from llm_agent.runtime.contracts import RuntimeRequest
+from llm_agent.skills import SkillCall, SkillPlan, SkillPlanResult
 
 
 class IntentType(str, Enum):
@@ -16,6 +17,7 @@ class IntentType(str, Enum):
     QUERY = "query"
     ACTION = "action"
     CANCEL = "cancel"
+    SKILL = "skill"
     UNKNOWN = "unknown"
 
 
@@ -24,6 +26,7 @@ class IntentDecision(BaseModel):
 
     intent: IntentType
     tool_name: str | None = None
+    skill_name: str | None = None
     arguments: dict = Field(default_factory=dict)
     reason: str = ""
 
@@ -37,6 +40,9 @@ class AgentState(TypedDict, total=False):
     user_summary: str
     intent: IntentDecision
     tool_call: object
+    skill_call: SkillCall
+    skill_plan: SkillPlan
+    skill_result: SkillPlanResult
     tool_result: object
     command: dict
     answer: str

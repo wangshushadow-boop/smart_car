@@ -5,6 +5,7 @@ from __future__ import annotations
 from llm_agent.agent.graph import build_graph
 from llm_agent.conversation import InMemoryConversationStore, NullConversationStore
 from llm_agent.models.registry import select_backends
+from llm_agent.skills import MotionSequenceSkill, SkillRegistry
 
 from .runtime import AgentRuntime
 
@@ -22,8 +23,11 @@ def create_runtime(config) -> tuple[AgentRuntime, str, str]:
         )
     else:
         conversation_store = NullConversationStore()
+    skill_registry = SkillRegistry()
+    if runtime_config.skills_enabled:
+        skill_registry.register(MotionSequenceSkill())
     runtime = AgentRuntime(
-        build_graph(model=generation, tts=speech),
+        build_graph(model=generation, tts=speech, skill_registry=skill_registry),
         conversation_store=conversation_store,
     )
     return runtime, generation.provider_name, speech.provider_name

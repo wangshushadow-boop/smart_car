@@ -198,6 +198,59 @@ class AgentGraphTest(unittest.TestCase):
         self.assertIn("前进1米", result["answer"])
         self.assertEqual(len(model.requests), 1)
 
+    def test_motion_sequence_skill_becomes_validated_plan(self) -> None:
+        model = FakeModel([
+            '{"intent":"skill","tool_name":null,'
+            '"skill_name":"motion_sequence","arguments":{"steps":['
+            '{"action":"move","distance_m":1.0},'
+            '{"action":"rotate","direction":"right","angle_deg":90}'
+            ']},"reason":"组合运动"}'
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()),
+            make_request("前进一米，然后右转九十度"),
+        )
+
+        self.assertEqual(
+            result["command"]["schema"], "small_car.motion_sequence.v1"
+        )
+        self.assertEqual(len(result["command"]["steps"]), 2)
+        self.assertEqual(result["command"]["steps"][1]["angle_deg"], -90)
+        self.assertIn("2个运动步骤", result["answer"])
+
+    def test_motion_sequence_validates_every_tool_before_output(self) -> None:
+        model = FakeModel([
+            '{"intent":"skill","tool_name":null,'
+            '"skill_name":"motion_sequence","arguments":{"steps":['
+            '{"action":"move","distance_m":1.0},'
+            '{"action":"move","distance_m":9.0}'
+            ']},"reason":"越界组合运动"}'
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()),
+            make_request("前进一米，然后前进九米"),
+        )
+
+        self.assertNotIn("command", result)
+        self.assertIn("无效工具调用", result["error"])
+        self.assertIn("不会移动", result["answer"])
+
+    def test_request_can_disable_skills_and_tools_together(self) -> None:
+        model = FakeModel([
+            '{"intent":"skill","tool_name":null,'
+            '"skill_name":"motion_sequence","arguments":{"steps":['
+            '{"action":"move","distance_m":1.0},'
+            '{"action":"rotate","direction":"left","angle_deg":90}'
+            ']},"reason":"组合运动"}'
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()),
+            make_request("组合运动", allow_tools=False),
+        )
+
+        self.assertNotIn("command", result)
+        self.assertIn("禁止调用工具", result["error"])
+
     def test_motion_outside_whitelist_is_rejected(self) -> None:
         model = FakeModel([
             '{"intent":"action","tool_name":"move_relative",'

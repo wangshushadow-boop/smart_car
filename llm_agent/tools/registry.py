@@ -29,6 +29,17 @@ class ToolRegistry:
     def contains(self, name: str) -> bool:
         return name in self._tools
 
+    def validate(self, call: ToolCall) -> str | None:
+        """只校验白名单和参数，不执行 Tool。"""
+        tool = self._tools.get(call.name)
+        if tool is None:
+            return f"tool is not registered: {call.name}"
+        try:
+            tool.arguments_model.model_validate(call.arguments)
+        except ValidationError as error:
+            return f"invalid tool arguments: {error}"
+        return None
+
     def execute(self, call: ToolCall, context: ToolContext) -> ToolResult:
         tool = self._tools.get(call.name)
         if tool is None:

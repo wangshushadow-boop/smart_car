@@ -14,7 +14,7 @@
                               ↓
                          runtime
                               ↓
-             agent / models / tools / speech
+          agent / skills / models / tools / speech
 ```
 
 所有外部调用方使用同一 Action。`AgentRuntime` 只接收纯 Python `RuntimeRequest`，不导入 ROS、HTTP、
@@ -28,6 +28,7 @@
 | `conversation/` | 按 `session_id` 隔离的短期多轮上下文及内存存储接口 |
 | `transport/ros/` | `RunAgent` Action Server 以及 ROS/Runtime 类型转换 |
 | `agent/` | LangGraph、共享状态、意图、安全、工具和回复节点 |
+| `skills/` | 高层任务接口、注册表和由多个白名单 Tool 组成的任务计划 |
 | `models/` | Provider 无关模型接口、能力声明、MiniCPM 和 MiniMax 适配 |
 | `tools/` | 强类型工具协议、白名单和执行超时 |
 | `adapters/audio/` | Piper 等独立语音合成适配器 |
@@ -59,8 +60,9 @@ Provider。统一响应协议已支持文本、音频、图片和视频，实际
 START
   ↓
 understand_intent
-  ├── query + tool ─→ safety_check ─→ execute_tool ─┐
-  └── 其他意图 ─────────────────────────────────────┤
+  ├── query/action + tool ─→ safety_check ─→ execute_tool ─┐
+  ├── skill ─→ skill_safety_check ─→ execute_skill ────────┤
+  └── 其他意图 ─────────────────────────────────────────────┤
                                                    ↓
                                           generate_response
                                                    ↓
@@ -71,6 +73,20 @@ understand_intent
 
 一轮通常包含一次意图识别和一次回复生成。动作请求、取消意图和无法识别请求使用确定性回答。工具调用还
 必须同时满足请求允许工具、工具已注册和参数校验通过。
+
+## Skill 与 Tool
+
+Tool 是单次、强类型的原子能力；Skill 是完成一类复合任务的确定性编排。Skill 不直接访问 ROS、
+Nav2 或硬件，而是先生成 `SkillPlan`，其中每一步仍是 `ToolCall`。计划中的全部 Tool 都通过注册表
+白名单和 Pydantic 参数校验后，才能生成下发任务；任一步无效时整份计划都不会下发。
+
+当前首个 Skill 是 `motion_sequence`，用于编排 2～8 个明确的直线和旋转步骤。单步运动继续直接调用
+`move_relative` 或 `rotate_relative`，避免为简单动作增加额外层级。模型意图阶段只注入 Skill 名称和
+简短说明，详细参数约束保留在提示词和代码模型中，避免未来 Skill 增多后把所有完整说明常驻上下文。
+
+组合任务通过 `small_car.motion_sequence.v1` 下发。树莓派 `agent_client` 会再次逐步校验距离、角度、
+字段和 schema，再按 Nav2 Action 的结果串行执行；任一步失败或取消都会清空剩余步骤。实时避障、轨迹
+闭环和急停仍由 Nav2、Collision Monitor、底盘及 MCU 负责，而不是由 LLM 循环控制。
 
 ## 短期多轮上下文
 
