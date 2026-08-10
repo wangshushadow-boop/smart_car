@@ -27,6 +27,11 @@ class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_inline_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+    conversation_enabled: bool = True
+    conversation_max_turns: int = Field(default=8, ge=1, le=100)
+    conversation_max_context_chars: int = Field(default=12_000, ge=256)
+    conversation_ttl_seconds: float = Field(default=1800.0, gt=0)
+    conversation_max_sessions: int = Field(default=128, ge=1)
 
 
 class AgentConfig(BaseModel):

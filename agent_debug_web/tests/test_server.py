@@ -44,7 +44,9 @@ class DebugServerTest(unittest.TestCase):
     def test_serves_independent_debug_page(self) -> None:
         with self.open(self.address, timeout=2) as response:
             html = response.read().decode("utf-8")
-        self.assertIn("全模态 Agent 调试台", html)
+        self.assertIn("小车 Agent 对话调试", html)
+        self.assertIn('id="messageList"', html)
+        self.assertIn('id="newConversation"', html)
 
     def test_forwards_unified_request_to_ros_client(self) -> None:
         payload = {

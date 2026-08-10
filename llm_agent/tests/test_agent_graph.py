@@ -4,6 +4,7 @@ import unittest
 from threading import Event
 
 from llm_agent.agent.graph import build_graph
+from llm_agent.conversation import ConversationTurn
 from llm_agent.models.types import ModelResponse, SpeechResponse
 from llm_agent.runtime import ContentPart, ContentType, RuntimeRequest
 from llm_agent.tools.registry import ToolRegistry
@@ -74,6 +75,28 @@ def invoke(graph, request: RuntimeRequest) -> dict:
 
 
 class AgentGraphTest(unittest.TestCase):
+    def test_history_is_used_for_response_but_not_motion_intent(self) -> None:
+        model = FakeModel([
+            '{"intent":"chat","tool_name":null,"arguments":{},"reason":"追问"}',
+            "它是蓝色的。",
+        ])
+        request = make_request("它是什么颜色？", audio_output=False)
+        graph = build_graph(model=model, tts=FakeTts())
+        graph.invoke(
+            {
+                "request_id": request.request_id,
+                "request": request,
+                "cancel_token": Event(),
+                "conversation_history": [
+                    ConversationTurn("我有一辆小车", "已经记住了。", 1.0)
+                ],
+            }
+        )
+
+        self.assertNotIn("我有一辆小车", model.requests[0].user_prompt)
+        self.assertIn("我有一辆小车", model.requests[1].user_prompt)
+        self.assertIn("不得复用历史运动参数", model.requests[1].user_prompt)
+
     def test_logs_complete_raw_model_outputs(self) -> None:
         intent_output = (
             '{"intent":"chat","tool_name":null,"arguments":{},'

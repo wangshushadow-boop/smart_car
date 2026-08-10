@@ -58,7 +58,11 @@ def create_understand_node(model: ModelBackend, prompts: PromptSet):
             decision = IntentDecision(
                 intent=IntentType.UNKNOWN, reason=f"意图识别失败：{error}"
             )
-        result: dict = {"intent": decision}
+        # 文字直接保存；纯语音请求只保存模型生成的意图摘要，不保存 WAV。
+        result: dict = {
+            "intent": decision,
+            "user_summary": text or decision.reason,
+        }
         if decision.tool_name:
             result["tool_call"] = ToolCall(
                 name=decision.tool_name, arguments=decision.arguments

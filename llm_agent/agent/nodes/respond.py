@@ -7,6 +7,7 @@ import logging
 from llm_agent.adapters.audio.tts import SpeechSynthesizer
 from llm_agent.agent.prompt_loader import PromptSet
 from llm_agent.agent.state import IntentType
+from llm_agent.conversation import format_conversation_history
 from llm_agent.models.protocol import ModelBackend
 from llm_agent.models.response_parser import sanitize_spoken_answer
 from llm_agent.models.types import ModelRequest, SpeechRequest
@@ -57,6 +58,9 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
         request = state["request"]
         text, audio_urls, image_urls, video_urls = request_inputs(request)
         context = [prompts.response, prompts.safety]
+        history = format_conversation_history(state.get("conversation_history", []))
+        if history:
+            context.append(history)
         if text:
             context.append(f"用户文字：{text}")
         tool_result = state.get("tool_result")

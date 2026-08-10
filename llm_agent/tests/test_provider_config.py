@@ -65,6 +65,8 @@ providers: {}
             config = self._config(config_text)
         self.assertEqual(config.generation.provider, "minimax")
         self.assertEqual(config.speech.provider, "auto")
+        self.assertTrue(config.runtime.conversation_enabled)
+        self.assertEqual(config.runtime.conversation_max_turns, 8)
 
     def test_default_registry_does_not_expose_unsafe_minicpm_speech(self) -> None:
         registry = create_default_registry()

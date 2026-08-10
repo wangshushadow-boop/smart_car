@@ -8,11 +8,14 @@ from .contracts import (
     RuntimeResponse,
 )
 from .runtime import AgentRuntime
+from llm_agent.conversation import ConversationTurn, InMemoryConversationStore
 
 __all__ = [
     "AgentRuntime",
     "ContentPart",
     "ContentType",
+    "ConversationTurn",
+    "InMemoryConversationStore",
     "RuntimeProgress",
     "RuntimeRequest",
     "RuntimeResponse",

@@ -7,6 +7,7 @@ from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from llm_agent.conversation import ConversationTurn
 from llm_agent.runtime.contracts import RuntimeRequest
 
 
@@ -32,6 +33,8 @@ class AgentState(TypedDict, total=False):
     request: RuntimeRequest
     cancel_token: object
     progress_callback: object
+    conversation_history: list[ConversationTurn]
+    user_summary: str
     intent: IntentDecision
     tool_call: object
     tool_result: object

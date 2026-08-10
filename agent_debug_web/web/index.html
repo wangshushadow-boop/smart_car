@@ -3,34 +3,95 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>全模态 Agent 调试台</title>
+    <title>小车 Agent 对话调试</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <p>SMART CAR · ROS ACTION CLIENT</p>
-        <h1>全模态 Agent 调试台</h1>
-        <span>独立 Debug Gateway</span>
-      </header>
-      <form id="agentForm">
-        <label for="prompt">文本输入</label>
-        <textarea id="prompt" maxlength="4000" rows="5" placeholder="请输入问题，也可以只上传媒体。"></textarea>
-        <label for="media">音频、图片或视频</label>
-        <input id="media" type="file" accept="audio/*,image/*,video/*" multiple />
-        <div class="options">
-          <label><input id="audioOutput" type="checkbox" /> 返回语音</label>
-          <label><input id="allowTools" type="checkbox" checked /> 允许白名单工具</label>
+    <main class="app-shell">
+      <aside class="utility-rail" aria-label="应用导航">
+        <div class="brand-mark" aria-label="Smart Car">SC</div>
+        <button class="rail-button active" type="button" aria-label="Agent 对话">对</button>
+        <div class="rail-spacer"></div>
+        <div class="connection-dot" title="ROS Agent 已连接"></div>
+      </aside>
+
+      <aside class="conversation-sidebar">
+        <div class="sidebar-header">
+          <div>
+            <span class="eyebrow">SMART CAR</span>
+            <h1>Agent 调试</h1>
+          </div>
+          <button id="newConversation" class="icon-button" type="button" title="新建对话" aria-label="新建对话">＋</button>
         </div>
-        <button id="submitButton" type="submit">发送统一请求</button>
-      </form>
-      <section>
-        <div class="result-title"><strong>RESPONSE</strong><span id="status">等待请求</span></div>
-        <pre id="answer">Agent 的输出会显示在这里。</pre>
-        <pre id="task" hidden></pre>
-        <audio id="audio" controls hidden></audio>
-        <div id="metadata"></div>
-        <p id="error" class="error"></p>
+        <label class="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input id="conversationSearch" type="search" placeholder="搜索当前对话" autocomplete="off" />
+        </label>
+        <div class="conversation-list" aria-label="会话列表">
+          <button class="conversation-item active" type="button">
+            <span class="avatar robot-avatar">机</span>
+            <span class="conversation-copy">
+              <strong>小车 Agent</strong>
+              <small id="conversationPreview">开始一段新的调试对话</small>
+            </span>
+            <time id="conversationTime">现在</time>
+          </button>
+        </div>
+        <div class="sidebar-footer">
+          <span>本地调试会话</span>
+          <code id="sessionLabel">—</code>
+        </div>
+      </aside>
+
+      <section class="chat-panel" aria-label="Agent 对话">
+        <header class="chat-header">
+          <div class="chat-identity">
+            <span class="avatar robot-avatar">机</span>
+            <div>
+              <strong>小车 Agent</strong>
+              <span><i id="statusDot"></i><span id="status">等待请求</span></span>
+            </div>
+          </div>
+          <div class="header-actions">
+            <span class="mode-badge">ROS ACTION CLIENT</span>
+            <button id="clearConversation" class="text-button" type="button">清空显示</button>
+          </div>
+        </header>
+
+        <div id="messageList" class="message-list" role="log" aria-live="polite">
+          <div id="emptyState" class="empty-state">
+            <span class="empty-avatar">SC</span>
+            <h2>开始调试小车 Agent</h2>
+            <p>发送文字，或附加语音、图片与视频。连续消息会使用当前 session 的短期上下文。</p>
+            <div class="quick-prompts">
+              <button type="button" data-prompt="你好，请介绍一下你自己">介绍一下自己</button>
+              <button type="button" data-prompt="小车当前状态怎么样？">查询车辆状态</button>
+              <button type="button" data-prompt="请描述我上传的图片">测试视觉理解</button>
+            </div>
+          </div>
+        </div>
+
+        <form id="agentForm" class="composer">
+          <div id="fileChips" class="file-chips" aria-live="polite"></div>
+          <textarea id="prompt" maxlength="4000" rows="1" placeholder="输入消息，Enter 发送，Shift + Enter 换行"></textarea>
+          <div class="composer-toolbar">
+            <div class="composer-tools">
+              <label class="tool-button" title="添加音频、图片或视频">
+                <input id="media" type="file" accept="audio/*,image/*,video/*" multiple />
+                <span aria-hidden="true">＋</span> 文件
+              </label>
+              <label class="switch-label">
+                <input id="audioOutput" type="checkbox" />
+                <span class="switch"></span>语音回复
+              </label>
+              <label class="switch-label">
+                <input id="allowTools" type="checkbox" checked />
+                <span class="switch"></span>允许工具
+              </label>
+            </div>
+            <button id="submitButton" class="send-button" type="submit">发送 <span aria-hidden="true">↵</span></button>
+          </div>
+        </form>
       </section>
     </main>
     <script src="/app.js" defer></script>
