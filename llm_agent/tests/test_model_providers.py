@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import base64
 import unittest
 import wave
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from llm_agent.models.minimax.generation import MiniMaxGeneration
 from llm_agent.models.minimax.speech import MiniMaxSpeech
 from llm_agent.models.minicpm.generation import MiniCpmGeneration
 from llm_agent.models.audio import inspect_pcm16_wav
+from llm_agent.models.piper import PiperSpeech
 from llm_agent.models.types import ModelRequest, SpeechRequest
 
 
@@ -56,6 +58,30 @@ class FakeHttpResponse:
 class ModelProvidersTest(unittest.TestCase):
     def test_shared_audio_validator_accepts_pcm16_wav(self) -> None:
         self.assertEqual(inspect_pcm16_wav(make_wav()), (16_000, 1))
+
+    def test_piper_calls_external_service(self) -> None:
+        wav = make_wav()
+        captured = {}
+
+        def opener(request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return FakeHttpResponse(
+                {
+                    "audio_wav_base64": base64.b64encode(wav).decode("ascii"),
+                    "provider": "piper",
+                }
+            )
+
+        response = PiperSpeech(
+            {"endpoint": "http://127.0.0.1:8101", "timeout_seconds": 8},
+            opener=opener,
+        ).synthesize(SpeechRequest(text="你好"))
+
+        self.assertEqual(response.audio_wav, wav)
+        self.assertEqual(response.sample_rate, 16_000)
+        self.assertEqual(captured["timeout"], 8)
+        self.assertEqual(captured["request"].full_url, "http://127.0.0.1:8101/synthesize")
 
     def test_minicpm_maps_all_input_modalities(self) -> None:
         client = FakeOpenAiClient()

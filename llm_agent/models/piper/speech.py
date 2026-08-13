@@ -1,11 +1,17 @@
-"""Piper 本地语音模型 Provider。"""
+"""Piper 独立语音服务的纯 HTTP 客户端。
+
+本模块只进行 JSON/Base64 协议转换与 WAV 校验，不执行 Piper 命令，也不访问
+ONNX 模型文件。Piper 服务的生命周期完全由 ``start_models.sh`` 管理。
+"""
 
 from __future__ import annotations
 
+import base64
+import json
 import os
-import subprocess
-import sys
-import tempfile
+from collections.abc import Callable
+from typing import Any
+from urllib.request import Request, urlopen
 
 from llm_agent.models.audio import inspect_pcm16_wav
 from llm_agent.models.capabilities import SpeechCapabilities
@@ -13,73 +19,48 @@ from llm_agent.models.types import SpeechRequest, SpeechResponse
 
 
 class PiperSpeech:
-    """本地 Piper ONNX TTS；通过子进程隔离推理，避免污染主进程状态。"""
+    """只调用外部 Piper 服务，不创建语音模型子进程。"""
 
     provider_name = "piper"
     capabilities = SpeechCapabilities(
         wav_output=True, streaming=False, configurable_voice=True
     )
 
-    def __init__(self, settings: dict | None = None) -> None:
+    def __init__(
+        self,
+        settings: dict | None = None,
+        *,
+        opener: Callable[..., Any] = urlopen,
+    ) -> None:
+        """从 models.yaml 构造客户端；允许环境变量临时覆盖 endpoint。"""
         settings = settings or {}
-        # 环境变量允许临时切换 Piper 解释器、模型与配置（调试或升级）。
-        self._python = os.getenv(
-            "CAR_TTS_PYTHON", settings.get("python", sys.executable)
-        )
-        self._model = os.getenv(
-            "CAR_TTS_MODEL",
-            settings.get(
-                "model",
-                "/mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx",
-            ),
-        )
-        self._config = os.getenv(
-            "CAR_TTS_CONFIG", settings.get("config", self._model + ".json")
-        )
+        self._endpoint = os.getenv(
+            "PIPER_ENDPOINT", str(settings.get("endpoint", "http://127.0.0.1:8101"))
+        ).rstrip("/")
         self._timeout = float(settings.get("timeout_seconds", 30))
+        self._opener = opener
 
     def synthesize(self, request: SpeechRequest) -> SpeechResponse:
-        """调用 Piper 合成 WAV，并校验采样率/声道数。"""
-        output_path: str | None = None
-        audio = b""
+        """调用 ``POST /synthesize``，解码并验证服务返回的 PCM16 WAV。"""
+        http_request = Request(
+            f"{self._endpoint}/synthesize",
+            data=json.dumps({"text": request.text}, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as output_file:
-                output_path = output_file.name
-            subprocess.run(
-                [
-                    self._python,
-                    "-m",
-                    "piper",
-                    "--model",
-                    self._model,
-                    "--config",
-                    self._config,
-                    "--output-file",
-                    output_path,
-                ],
-                input=request.text.encode("utf-8"),
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=self._timeout,
-            )
-            with open(output_path, "rb") as output_file:
-                audio = output_file.read()
-        except (OSError, subprocess.SubprocessError) as error:
-            raise RuntimeError(f"Piper TTS failed: {error}") from error
-        finally:
-            # 不管成败都要清理临时文件，避免 /tmp 堆积。
-            if output_path:
-                try:
-                    os.unlink(output_path)
-                except FileNotFoundError:
-                    pass
-        if not audio:
-            raise RuntimeError("Piper TTS returned an empty WAV")
-        sample_rate, channels = inspect_pcm16_wav(audio)
+            with self._opener(http_request, timeout=self._timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            if result.get("error"):
+                raise RuntimeError(str(result["error"]))
+            audio = base64.b64decode(result["audio_wav_base64"], validate=True)
+            # 即便服务声明了采样率，也以实际 WAV 头为准，防止损坏音频下发。
+            sample_rate, channels = inspect_pcm16_wav(audio)
+        except Exception as error:
+            raise RuntimeError(f"Piper service request failed: {error}") from error
         return SpeechResponse(
             audio_wav=audio,
-            provider=self.provider_name,
+            provider=str(result.get("provider", self.provider_name)),
             sample_rate=sample_rate,
             channels=channels,
         )

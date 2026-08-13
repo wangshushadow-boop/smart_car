@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from llm_agent.agent.graph import build_graph
 from llm_agent.conversation import InMemoryConversationStore, NullConversationStore
-from llm_agent.models.registry import select_backends
+from llm_agent.models.registry import check_required_model_services, select_backends
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry
 
 from .runtime import AgentRuntime
@@ -29,10 +29,12 @@ def create_runtime(config) -> tuple[AgentRuntime, str, str]:
         (AgentRuntime, generation_provider_name, speech_provider_name)
         后两个字符串仅用于日志与诊断，不参与请求路由。
     """
-    # 1. 选择生成、ASR 与语音后端；`auto` 模式按模型能力决定是否启用 ASR。
+    # 1. Agent 不负责启动模型；装配前确认所需本地服务已经由 start_models 启动。
+    check_required_model_services(config)
+    # 2. 选择生成、ASR 与语音后端；`auto` 模式按模型能力决定是否启用 ASR。
     generation, asr, speech = select_backends(config)
     runtime_config = config.runtime
-    # 2. 短期对话存储：默认内存实现，受容量与 TTL 限制；关闭时换空实现。
+    # 3. 短期对话存储：默认内存实现，受容量与 TTL 限制；关闭时换空实现。
     if runtime_config.conversation_enabled:
         conversation_store = InMemoryConversationStore(
             max_turns=runtime_config.conversation_max_turns,
@@ -42,11 +44,11 @@ def create_runtime(config) -> tuple[AgentRuntime, str, str]:
         )
     else:
         conversation_store = NullConversationStore()
-    # 3. Skill 白名单：当前只有 `motion_sequence` 一个受支持的高层任务。
+    # 4. Skill 白名单：当前只有 `motion_sequence` 一个受支持的高层任务。
     skill_registry = SkillRegistry()
     if runtime_config.skills_enabled:
         skill_registry.register(MotionSequenceSkill())
-    # 4. 编译 LangGraph 并封装为 Runtime，供 ROS Action Server 注入。
+    # 5. 编译 LangGraph 并封装为 Runtime，供 ROS Action Server 注入。
     runtime = AgentRuntime(
         build_graph(
             model=generation,

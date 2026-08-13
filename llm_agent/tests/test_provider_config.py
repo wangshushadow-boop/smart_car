@@ -8,7 +8,9 @@ from unittest.mock import patch
 from llm_agent.app.config import load_agent_config
 from llm_agent.models.registry import (
     ProviderRegistry,
+    check_required_model_services,
     create_default_registry,
+    required_local_models,
     select_backends,
 )
 from llm_agent.models.types import ModelResponse, SpeechResponse
@@ -110,6 +112,60 @@ models:
     def test_default_registry_does_not_expose_unsafe_minicpm_speech(self) -> None:
         registry = create_default_registry()
         self.assertFalse(registry.has_speech("minicpm"))
+
+    def test_required_local_models_follow_agent_capabilities(self) -> None:
+        config = self._config(
+            """
+generation_model: {provider: minimax}
+asr: {provider: auto, fallback: qwen3_asr}
+speech: {provider: auto, preferred: same_provider, fallback: piper}
+""",
+            """
+models:
+  minimax:
+    backend: minimax
+    roles: [generation_model, speech]
+    capabilities: {audio_input: false}
+    deployment: {local: false}
+  qwen3_asr:
+    backend: qwen3_asr
+    roles: [asr]
+    deployment: {local: true, health_url: http://127.0.0.1:8100/health}
+  piper:
+    backend: piper
+    roles: [speech]
+    deployment: {local: true, health_url: http://127.0.0.1:8101/health}
+""",
+        )
+        self.assertEqual(required_local_models(config), ["qwen3_asr", "piper"])
+
+    def test_missing_model_services_report_start_command(self) -> None:
+        config = self._config(
+            """
+generation_model: {provider: local}
+asr: {provider: none, fallback: qwen3_asr}
+speech: {provider: piper, preferred: same_provider, fallback: piper}
+""",
+            """
+models:
+  local:
+    backend: local
+    roles: [generation_model]
+    capabilities: {audio_input: true}
+    deployment: {local: true, health_url: http://127.0.0.1:9000/health}
+  piper:
+    backend: piper
+    roles: [speech]
+    deployment: {local: true, health_url: http://127.0.0.1:8101/health}
+""",
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "start_models.sh local piper"
+        ):
+            check_required_model_services(
+                config, opener=lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline"))
+            )
 
     def test_auto_uses_same_provider_then_fallback(self) -> None:
         config = self._config(

@@ -230,3 +230,34 @@ Agent Server 不直接发布速度或访问底盘，任意 ROS topic 发布也�
 已验证的语音对话启动、检查和排错步骤见[Agent 语音对话链路](docs/agent_ros_voice_loop.md)。
 内部设计见[Agent 架构](docs/architecture.md)、[统一请求与状态](docs/agent_state.md)、[模型 Provider](docs/model_providers.md)、
 [状态与事件](docs/agent_state.md)和[工具契约](docs/tool_contract.md)。
+
+### 模型与 Agent 分离启动
+
+本地模型按名称独立启动，模型进程不会由 Agent 创建。可以一次指定多个模型：
+
+```bash
+# MiniCPM + Piper
+bash ./llm_agent/scripts/start_models.sh minicpm piper
+
+# 或 MiniMax 所需的本地 ASR + Piper
+bash ./llm_agent/scripts/start_models.sh qwen3_asr piper
+```
+
+另开终端启动 Agent：
+
+```bash
+bash ./llm_agent/scripts/start_agent.sh
+```
+
+模型终端退出只停止模型，Agent 终端退出只停止 Agent。模型部署定义位于
+`config/models.yaml`，启动器不读取 `agent.yaml`。
+
+查看完整参数和可启动模型：
+
+```bash
+bash ./llm_agent/scripts/start_models.sh --help
+bash ./llm_agent/scripts/start_models.sh --list
+```
+
+不传参数时只显示帮助，不会启动模型。Agent 启动时会检查当前配置依赖的本地
+模型；如有缺失会直接退出，并给出完整的 `start_models.sh <模型...>` 命令。

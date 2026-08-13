@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from urllib.request import urlopen
 
 from .capabilities import SpeechCapabilities
 from .minicpm import MiniCpmGeneration
@@ -109,6 +110,78 @@ def _model(config, name: str, role: str):
     if role not in model.roles:
         raise ValueError(f"model {name} does not provide role: {role}")
     return model
+
+
+def required_local_models(config) -> list[str]:
+    """解析当前 Agent 配置实际依赖的本地模型服务。
+
+    这里仅做配置计算，不创建 Provider。auto ASR 根据生成模型声明的
+    ``capabilities.audio_input`` 决定；speech auto 始终检查本地 fallback，
+    同时检查本地 preferred。返回结果去重且保持调用顺序。
+    """
+    required: list[str] = []
+
+    def add_if_local(name: str) -> None:
+        model = config.models.get(name)
+        if model and model.settings().get("deployment", {}).get("local", False):
+            if name not in required:
+                required.append(name)
+
+    generation_name = config.generation_model.provider
+    generation_model = _model(config, generation_name, "generation_model")
+    add_if_local(generation_name)
+
+    asr_name = config.asr.provider
+    if asr_name == "auto":
+        capabilities = generation_model.settings().get("capabilities", {})
+        asr_name = "none" if capabilities.get("audio_input", False) else config.asr.fallback
+    if asr_name != "none":
+        _model(config, asr_name, "asr")
+        add_if_local(asr_name)
+
+    speech_name = config.speech.provider
+    if speech_name == "auto":
+        preferred = config.speech.preferred
+        if preferred in {"native", "same_provider"}:
+            preferred = generation_name
+        if preferred in config.models:
+            add_if_local(preferred)
+        _model(config, config.speech.fallback, "speech")
+        add_if_local(config.speech.fallback)
+    else:
+        if speech_name in {"native", "same_provider"}:
+            speech_name = generation_name
+        _model(config, speech_name, "speech")
+        add_if_local(speech_name)
+    return required
+
+
+def check_required_model_services(config, opener=urlopen) -> list[str]:
+    """检查 Agent 所需本地模型的健康接口，失败时给出可执行启动提示。"""
+    missing: list[tuple[str, str, str]] = []
+    for name in required_local_models(config):
+        deployment = config.models[name].settings().get("deployment", {})
+        health_url = str(deployment.get("health_url", ""))
+        try:
+            if not health_url:
+                raise RuntimeError("未配置 health_url")
+            with opener(health_url, timeout=2) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"HTTP {response.status}")
+        except Exception as error:
+            missing.append((name, health_url or "<未配置>", str(error)))
+    if missing:
+        names = " ".join(name for name, _, _ in missing)
+        details = "\n".join(
+            f"- {name}: {url} ({error})" for name, url, error in missing
+        )
+        raise RuntimeError(
+            "Agent 所需的本地模型服务不可用：\n"
+            f"{details}\n"
+            "请先在另一个终端执行：\n"
+            f"bash ./llm_agent/scripts/start_models.sh {names}"
+        )
+    return required_local_models(config)
 
 
 def select_backends(config, registry: ProviderRegistry | None = None):

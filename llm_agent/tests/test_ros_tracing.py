@@ -21,6 +21,12 @@ class _TraceLibrary:
 
 
 class RosTracingTest(unittest.TestCase):
+    def test_missing_trace_library_is_a_noop(self) -> None:
+        with patch("llm_agent.transport.ros.tracing._trace_library", return_value=None):
+            with ros_trace_scope(lambda: None, "callback"):
+                value = 1
+        self.assertEqual(value, 1)
+
     def test_emits_balanced_events_with_stable_bound_method_identity(self) -> None:
         library = _TraceLibrary()
 

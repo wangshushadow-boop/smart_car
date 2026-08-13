@@ -48,6 +48,14 @@ speech:
 `roles` 声明该实例可承担 `generation_model`、`asr` 或 `speech`。模型路径、独立
 Python 环境、设备、端点、超时及生成参数都保存在对应条目中；密钥仍只放环境变量。
 
+本地 Provider 均为独立 HTTP 服务。Agent 中的 Qwen3-ASR 与 Piper 实现只是客户端，
+不会加载权重或创建子进程。按模型名启动一个或多个服务：
+
+```bash
+bash ./llm_agent/scripts/start_models.sh minicpm piper
+bash ./llm_agent/scripts/start_models.sh qwen3_asr piper
+```
+
 语音选择规则：
 
 - `piper`、`minimax`：严格使用指定 provider，失败时保留文本并报告 TTS 错误；

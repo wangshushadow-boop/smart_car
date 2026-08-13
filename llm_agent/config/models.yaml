@@ -13,6 +13,13 @@ models:
     intent_temperature: 0.0
     response_max_tokens: 256
     response_temperature: 0.2
+    capabilities:
+      audio_input: true
+    deployment:
+      local: true
+      command: minicpm
+      health_url: http://127.0.0.1:8099/health
+      startup_timeout_seconds: 180
 
   minimax:
     backend: minimax
@@ -27,24 +34,45 @@ models:
     response_max_tokens: 2048
     response_temperature: 0.2
     reasoning_split: true
+    capabilities:
+      audio_input: false
     speech_url: https://api.minimaxi.com/v1/t2a_v2
     speech_model: speech-2.8-turbo
     voice_id: Chinese (Mandarin)_Reliable_Executive
     sample_rate: 32000
     speech_timeout_seconds: 60
+    deployment:
+      local: false
 
   qwen3_asr:
     backend: qwen3_asr
     roles: [asr]
-    python: /mnt/d/work/smart_car/llm_agent/py_env/venvs/qwen3-asr/bin/python
-    model: /mnt/d/AI/models/Qwen3-ASR-0.6B
-    device: cuda:0
+    endpoint: http://127.0.0.1:8100
     language: Chinese
     timeout_seconds: 120
+    deployment:
+      local: true
+      command: qwen3_asr
+      python: /mnt/d/work/smart_car/llm_agent/py_env/venvs/qwen3-asr/bin/python
+      model: /mnt/d/AI/models/Qwen3-ASR-0.6B
+      device: cuda:0
+      host: 127.0.0.1
+      port: 8100
+      health_url: http://127.0.0.1:8100/health
+      startup_timeout_seconds: 180
 
   piper:
     backend: piper
     roles: [speech]
-    model: /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx
-    config: /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx.json
+    endpoint: http://127.0.0.1:8101
     timeout_seconds: 30
+    deployment:
+      local: true
+      command: piper
+      python: /mnt/d/work/smart_car/llm_agent/py_env/venvs/agent/bin/python
+      model: /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx
+      config: /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx.json
+      host: 127.0.0.1
+      port: 8101
+      health_url: http://127.0.0.1:8101/health
+      startup_timeout_seconds: 30
