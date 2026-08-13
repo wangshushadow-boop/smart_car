@@ -4,10 +4,13 @@ import unittest
 from threading import Event
 
 from llm_agent.agent.graph import build_graph
-from llm_agent.asr import TranscriptionResponse
 from llm_agent.conversation import ConversationTurn
 from llm_agent.models import GenerationCapabilities
-from llm_agent.models.types import ModelResponse, SpeechResponse
+from llm_agent.models.types import (
+    ModelResponse,
+    SpeechResponse,
+    TranscriptionResponse,
+)
 from llm_agent.runtime import ContentPart, ContentType, RuntimeRequest
 from llm_agent.tools.registry import ToolRegistry
 from llm_agent.tools.vehicle.status import RobotStatus

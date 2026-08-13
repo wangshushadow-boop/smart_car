@@ -1,7 +1,7 @@
 # MiniCPM-o AWQ 语音能力限制
 
 > 重要：当前 Agent 不调用 MiniCPM-o 的独立语音 WebSocket，也不注册 `speech.provider=minicpm`。
-> 默认 `auto` 会为 MiniCPM generation 直接选择 Piper。不要把任意最终文本直接发送到
+> 默认 `auto` 会为 MiniCPM 生成模型直接选择 Piper。不要把任意最终文本直接发送到
 > `/v1/audio/speech/stream`。
 
 当前方案在 RTX 3090 24GB 上运行 `MiniCPM-o-4_5-AWQ`，由 vLLM-Omni 的三个阶段完成
@@ -10,7 +10,7 @@
 ## 环境与模型
 
 ```text
-复用虚拟环境：/opt/minicpm-service/venv
+MiniCPM 环境： `llm_agent/py_env/venvs/minicpm`
 AWQ 模型：    /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
 服务地址：    http://127.0.0.1:8099
 3090 配置：   llm_agent/config/minicpmo_4_5_awq_3090.yaml
@@ -20,7 +20,7 @@ AWQ 模型：    /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
 `vllm-omni` 或排查依赖时，可以复用同一环境：
 
 ```zsh
-source /opt/minicpm-service/venv/bin/activate
+source llm_agent/py_env/venvs/minicpm/bin/activate
 ```
 
 不要同时运行 8000 端口的普通 vLLM；RTX 3090 无法让两个服务同时驻留。
@@ -30,7 +30,7 @@ source /opt/minicpm-service/venv/bin/activate
 Python 包优先使用清华 PyPI：
 
 ```zsh
-/opt/minicpm-service/venv/bin/pip install \
+llm_agent/py_env/venvs/minicpm/bin/pip install \
   --index-url https://pypi.tuna.tsinghua.edu.cn/simple 包名
 ```
 
@@ -46,7 +46,7 @@ export HF_HUB_DISABLE_XET=1
 当前环境的 CUDA 头文件为 13.0。FlashInfer 本地编译要求编译组件保持同一版本，已验证的版本为：
 
 ```zsh
-/opt/minicpm-service/venv/bin/pip install \
+llm_agent/py_env/venvs/minicpm/bin/pip install \
   --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
   nvidia-cuda-nvcc==13.0.88 \
   nvidia-cuda-crt==13.0.88 \

@@ -1,0 +1,5 @@
+# Keep ASR isolated from MiniCPM because both constrain transformers/torch.
+qwen-asr==0.0.6
+modelscope
+coverage==7.15.4
+

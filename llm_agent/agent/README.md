@@ -13,9 +13,8 @@
 
 - `llm_agent/runtime` 定义统一全模态请求、响应、进度、取消和执行生命周期；
 - `llm_agent/transport/ros` 提供唯一的 `RunAgent` Action Server；
-- `llm_agent/models` 封装本地/云端推理、语音、能力声明和 provider 选择；
+- `llm_agent/models` 封装本地/云端生成、ASR、语音、能力声明和 provider 选择；
 - `llm_agent/tools` 定义强类型白名单工具；
-- `llm_agent/adapters/audio` 封装独立 TTS；
 - 树莓派 `robot_host/ros/agent_client` 负责 VAD、画面聚合和硬件播放；
 - 仓库顶层 `agent_debug_web` 是完全独立的 Action Client。
 

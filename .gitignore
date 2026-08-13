@@ -41,6 +41,7 @@ install_manifest.txt
 .idea/
 .codex_tmp/
 __pycache__/
+llm_agent/py_env/venvs/
 robot_host/runtime/
 *.log
 *.tmp
@@ -49,3 +50,6 @@ robot_host/runtime/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+ros-traces/
+llm_agent\py_env\venvs

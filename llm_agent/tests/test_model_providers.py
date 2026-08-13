@@ -10,6 +10,7 @@ from unittest.mock import patch
 from llm_agent.models.minimax.generation import MiniMaxGeneration
 from llm_agent.models.minimax.speech import MiniMaxSpeech
 from llm_agent.models.minicpm.generation import MiniCpmGeneration
+from llm_agent.models.audio import inspect_pcm16_wav
 from llm_agent.models.types import ModelRequest, SpeechRequest
 
 
@@ -53,6 +54,9 @@ class FakeHttpResponse:
 
 
 class ModelProvidersTest(unittest.TestCase):
+    def test_shared_audio_validator_accepts_pcm16_wav(self) -> None:
+        self.assertEqual(inspect_pcm16_wav(make_wav()), (16_000, 1))
+
     def test_minicpm_maps_all_input_modalities(self) -> None:
         client = FakeOpenAiClient()
         model = MiniCpmGeneration(client=client)

@@ -1,0 +1,9 @@
+# MiniCPM-o local inference environment.
+vllm==0.26.0
+vllm-omni==0.26.0
+modelscope
+openai
+nvidia-cuda-nvcc==13.0.88
+nvidia-cuda-crt==13.0.88
+nvidia-cuda-cccl==13.0.85
+nvidia-nvvm==13.0.88

@@ -1,0 +1,4 @@
+# ROS 2 trace 数据分析环境。ROS 2、ros2trace、LTTng 和 Babeltrace 由 apt 提供。
+pandas
+pyarrow
+bokeh

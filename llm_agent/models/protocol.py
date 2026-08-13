@@ -12,7 +12,14 @@ from __future__ import annotations
 from typing import Protocol
 
 from .capabilities import GenerationCapabilities, SpeechCapabilities
-from .types import ModelRequest, ModelResponse, SpeechRequest, SpeechResponse
+from .types import (
+    ModelRequest,
+    ModelResponse,
+    SpeechRequest,
+    SpeechResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
+)
 
 
 class GenerationBackend(Protocol):
@@ -43,6 +50,17 @@ class SpeechBackend(Protocol):
 
     def synthesize(self, request: SpeechRequest) -> SpeechResponse:
         """Synthesize a validated WAV response from final answer text."""
+
+
+class AsrBackend(Protocol):
+    """语音识别 Provider 协议。"""
+
+    @property
+    def provider_name(self) -> str:
+        """Stable provider identifier used in diagnostics."""
+
+    def transcribe(self, request: TranscriptionRequest) -> TranscriptionResponse:
+        """把一段或多段音频转成非空文本。"""
 
 
 # Compatibility name for the first architecture revision.

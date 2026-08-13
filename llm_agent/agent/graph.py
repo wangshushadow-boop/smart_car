@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from llm_agent.adapters.audio.tts import PiperSpeech, SpeechSynthesizer
-from llm_agent.asr import AsrBackend, Qwen3Asr
 from llm_agent.models.minicpm import MiniCpmModel
-from llm_agent.models.protocol import ModelBackend
+from llm_agent.models.piper import PiperSpeech
+from llm_agent.models.protocol import AsrBackend, ModelBackend, SpeechBackend
+from llm_agent.models.qwen3_asr import Qwen3Asr
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry
 from llm_agent.tools.registry import ToolRegistry
 from llm_agent.tools.vehicle import (
@@ -46,14 +46,17 @@ from .prompt_loader import PromptSet, load_prompts
 from .state import AgentState, IntentType
 
 
+_DEFAULT_ASR = object()
+
+
 def build_graph(
     model: ModelBackend | None = None,
-    tts: SpeechSynthesizer | None = None,
+    tts: SpeechBackend | None = None,
     registry: ToolRegistry | None = None,
     prompts: PromptSet | None = None,
     status_provider: RobotStatusProvider | None = None,
     skill_registry: SkillRegistry | None = None,
-    asr: AsrBackend | None = None,
+    asr: AsrBackend | None | object = _DEFAULT_ASR,
 ):
     """构造并编译 LangGraph。
 
@@ -66,7 +69,8 @@ def build_graph(
     model = model or MiniCpmModel()
     tts = tts or PiperSpeech()
     # 适配器本身很轻，Qwen 权重只在生成模型不支持音频且收到音频时加载。
-    asr = asr or Qwen3Asr()
+    if asr is _DEFAULT_ASR:
+        asr = Qwen3Asr()
     prompts = prompts or load_prompts()
     # Tool 白名单：4 个声明式底盘 Tool，全部由树莓派侧二次校验后真正执行。
     if registry is None:

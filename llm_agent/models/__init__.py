@@ -6,11 +6,19 @@ re-export。
 """
 
 from .capabilities import GenerationCapabilities, SpeechCapabilities
-from .protocol import GenerationBackend, ModelBackend, SpeechBackend
-from .types import ModelRequest, ModelResponse, SpeechRequest, SpeechResponse
+from .protocol import AsrBackend, GenerationBackend, ModelBackend, SpeechBackend
+from .types import (
+    ModelRequest,
+    ModelResponse,
+    SpeechRequest,
+    SpeechResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
+)
 
 __all__ = [
     "GenerationBackend",
+    "AsrBackend",
     "GenerationCapabilities",
     "ModelBackend",
     "ModelRequest",
@@ -19,4 +27,6 @@ __all__ = [
     "SpeechCapabilities",
     "SpeechRequest",
     "SpeechResponse",
+    "TranscriptionRequest",
+    "TranscriptionResponse",
 ]

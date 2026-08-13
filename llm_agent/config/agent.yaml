@@ -1,12 +1,17 @@
 # Secrets stay in environment variables.  MINIMAX_API_KEY is never stored here.
-generation:
+generation_model:
   # minicpm， minimax
   provider: minimax
 
+asr:
+  # auto: 生成模型不支持音频时使用 fallback；none: 禁用转写。
+  provider: auto
+  fallback: qwen3_asr
+
 speech:
-  # auto: prefer the generation provider's standalone speech capability, then use fallback.
+  # auto: prefer the selected model's standalone speech capability, then use fallback.
   # MiniCPM-o does not expose safe standalone TTS in the current vLLM-Omni service,
-  # so the default MiniCPM generation configuration resolves to Piper.
+  # so the default MiniCPM model configuration resolves to Piper.
   # Other choices: piper, minimax, native, same_provider.
   provider: auto
   preferred: same_provider
@@ -23,38 +28,3 @@ runtime:
   conversation_max_context_chars: 12000
   conversation_ttl_seconds: 1800
   conversation_max_sessions: 128
-
-providers:
-  minicpm:
-    base_url: http://127.0.0.1:8099/v1
-    model: /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
-    timeout_seconds: 90
-    max_retries: 1
-    intent_max_tokens: 160
-    intent_temperature: 0.0
-    response_max_tokens: 256
-    response_temperature: 0.2
-
-  minimax:
-    # OpenAI-compatible endpoint; credentials remain in environment variables.
-    protocol: openai
-    base_url: https://api.minimaxi.com/v1
-    model: MiniMax-M3
-    timeout_seconds: 90
-    max_retries: 1
-    # M3 的 reasoning token 计入生成上限，意图和回复都保留完整思考预算。
-    intent_max_tokens: 2048
-    intent_temperature: 0.01
-    response_max_tokens: 2048
-    response_temperature: 0.2
-    reasoning_split: true
-    speech_url: https://api.minimaxi.com/v1/t2a_v2
-    speech_model: speech-2.8-turbo
-    voice_id: Chinese (Mandarin)_Reliable_Executive
-    sample_rate: 32000
-    speech_timeout_seconds: 60
-
-  piper:
-    model: /home/llm_agent/.local/share/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx
-    config: /home/llm_agent/.local/share/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx.json
-    timeout_seconds: 30

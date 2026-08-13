@@ -14,11 +14,10 @@ from __future__ import annotations
 
 import logging
 
-from llm_agent.adapters.audio.tts import SpeechSynthesizer
 from llm_agent.agent.prompt_loader import PromptSet
 from llm_agent.agent.state import IntentType
 from llm_agent.conversation import format_conversation_history
-from llm_agent.models.protocol import ModelBackend
+from llm_agent.models.protocol import ModelBackend, SpeechBackend
 from llm_agent.models.response_parser import sanitize_spoken_answer
 from llm_agent.models.types import ModelRequest, SpeechRequest
 from llm_agent.runtime.contracts import ContentType
@@ -136,7 +135,7 @@ def create_response_node(model: ModelBackend, prompts: PromptSet):
     return respond
 
 
-def create_speech_node(tts: SpeechSynthesizer):
+def create_speech_node(tts: SpeechBackend):
     """构造语音合成节点：TTS 失败时仅写 error，不影响 answer。"""
 
     def synthesize_speech(state: dict) -> dict:

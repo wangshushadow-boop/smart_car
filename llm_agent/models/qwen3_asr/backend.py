@@ -16,7 +16,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from .types import TranscriptionRequest, TranscriptionResponse
+from ..types import TranscriptionRequest, TranscriptionResponse
 
 
 class Qwen3Asr:
@@ -26,6 +26,7 @@ class Qwen3Asr:
 
     def __init__(
         self,
+        settings: dict | None = None,
         *,
         model_path: str | None = None,
         device: str | None = None,
@@ -34,16 +35,29 @@ class Qwen3Asr:
         timeout_seconds: float | None = None,
         model_loader: Callable[[], Any] | None = None,
     ) -> None:
+        settings = settings or {}
         self._model_path = model_path or os.getenv(
-            "QWEN3_ASR_MODEL", "/mnt/d/AI/models/Qwen3-ASR-0.6B"
+            "QWEN3_ASR_MODEL",
+            settings.get("model", "/mnt/d/AI/models/Qwen3-ASR-0.6B"),
         )
-        self._device = device or os.getenv("QWEN3_ASR_DEVICE", "cuda:0")
-        self._language = language or os.getenv("QWEN3_ASR_LANGUAGE", "Chinese")
+        self._device = device or os.getenv(
+            "QWEN3_ASR_DEVICE", settings.get("device", "cuda:0")
+        )
+        self._language = language or os.getenv(
+            "QWEN3_ASR_LANGUAGE", settings.get("language", "Chinese")
+        )
         self._worker_python = worker_python or os.getenv(
-            "QWEN3_ASR_PYTHON", "/mnt/d/AI/venvs/qwen3-asr/bin/python"
+            "QWEN3_ASR_PYTHON",
+            settings.get(
+                "python",
+                "/mnt/d/work/smart_car/llm_agent/py_env/venvs/qwen3-asr/bin/python",
+            ),
         )
         self._timeout_seconds = timeout_seconds or float(
-            os.getenv("QWEN3_ASR_TIMEOUT_SECONDS", "120")
+            os.getenv(
+                "QWEN3_ASR_TIMEOUT_SECONDS",
+                str(settings.get("timeout_seconds", 120)),
+            )
         )
         # model_loader 只用于依赖无关的单元测试和显式嵌入场景。
         self._model_loader = model_loader
@@ -141,7 +155,7 @@ class Qwen3Asr:
             filter(None, [str(project_root), current_pythonpath])
         )
         self._worker = subprocess.Popen(
-            [self._worker_python, "-m", "llm_agent.asr.worker"],
+            [self._worker_python, "-m", "llm_agent.models.qwen3_asr.worker"],
             cwd=project_root,
             env=environment,
             stdin=subprocess.PIPE,

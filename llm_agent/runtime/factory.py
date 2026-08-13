@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 from llm_agent.agent.graph import build_graph
-from llm_agent.asr import Qwen3Asr
 from llm_agent.conversation import InMemoryConversationStore, NullConversationStore
 from llm_agent.models.registry import select_backends
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry
@@ -30,8 +29,8 @@ def create_runtime(config) -> tuple[AgentRuntime, str, str]:
         (AgentRuntime, generation_provider_name, speech_provider_name)
         后两个字符串仅用于日志与诊断，不参与请求路由。
     """
-    # 1. 选择推理与语音后端；`auto` 模式下内部会包装 FallbackSpeech。
-    generation, speech = select_backends(config)
+    # 1. 选择生成、ASR 与语音后端；`auto` 模式按模型能力决定是否启用 ASR。
+    generation, asr, speech = select_backends(config)
     runtime_config = config.runtime
     # 2. 短期对话存储：默认内存实现，受容量与 TTL 限制；关闭时换空实现。
     if runtime_config.conversation_enabled:
@@ -53,7 +52,7 @@ def create_runtime(config) -> tuple[AgentRuntime, str, str]:
             model=generation,
             tts=speech,
             skill_registry=skill_registry,
-            asr=Qwen3Asr(),
+            asr=asr,
         ),
         conversation_store=conversation_store,
     )

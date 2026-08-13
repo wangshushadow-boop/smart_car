@@ -10,7 +10,7 @@ import json
 import os
 from urllib.request import Request, urlopen
 
-from llm_agent.adapters.audio.wav import inspect_pcm16_wav
+from llm_agent.models.audio import inspect_pcm16_wav
 
 from ..capabilities import SpeechCapabilities
 from ..types import SpeechRequest, SpeechResponse

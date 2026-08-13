@@ -1,0 +1,8 @@
+# Agent、Web Debug 和单元测试共用的 Python 依赖。
+pydantic>=2,<3
+PyYAML
+langgraph
+openai
+coverage==7.15.4
+piper-tts
+pathvalidate

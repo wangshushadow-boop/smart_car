@@ -11,7 +11,8 @@ WSL 从零构建、整体备份和跨主机迁移步骤见：
 - WSL 发行版：`Ubuntu-24.04`
 - WSL 用户：`llm_agent`
 - 用户主目录：`/home/llm_agent`
-- Python 环境：`/opt/minicpm-service/venv`
+- 通用 Agent 环境：`llm_agent/py_env/venvs/agent`
+- MiniCPM 环境：`llm_agent/py_env/venvs/minicpm`
 - 模型目录：`/mnt/d/AI/models/MiniCPM-o-4_5-AWQ`
 - API 地址：`http://127.0.0.1:8099/v1`
 - API 模型名：`/mnt/d/AI/models/MiniCPM-o-4_5-AWQ`
@@ -48,7 +49,7 @@ cd /mnt/d/work/smart_car/llm_agent
 如果需要直接执行 Python、vLLM 或检查依赖，激活模型虚拟环境：
 
 ```bash
-source /opt/minicpm-service/venv/bin/activate
+source llm_agent/py_env/venvs/agent/bin/activate
 ```
 
 激活后可检查环境：
@@ -133,11 +134,15 @@ API Key: EMPTY
 Agent 通过 `127.0.0.1` 访问服务，但启动脚本当前使用 `0.0.0.0:8099` 监听且未启用 API 鉴权。
 只应在受信任网络使用，并通过 Windows/WSL 防火墙限制 8099 端口，不要暴露到公网。
 
-推理模型和语音后端在 `config/agent.yaml` 中独立选择：
+生成、ASR 和语音后端在 `config/agent.yaml` 中独立选择：
 
 ```yaml
-generation:
+generation_model:
   provider: minicpm       # minicpm | minimax
+
+asr:
+  provider: auto          # auto | qwen3_asr | none
+  fallback: qwen3_asr
 
 speech:
   provider: auto          # auto | native | same_provider | piper | minimax
@@ -145,16 +150,19 @@ speech:
   fallback: piper
 ```
 
+模型路径、隔离 Python 环境、设备、服务地址和推理参数统一保存在
+`config/models.yaml`。`agent.yaml` 只保留模型选择和 Agent 行为配置。
+
 `auto` 优先使用推理 provider 已注册的独立语音能力，没有时直接使用 Piper。当前 MiniCPM-o 的
 vLLM-Omni 服务没有安全的独立 TTS 接口，因此默认组合是 MiniCPM 推理 + Piper；MiniMax 仍可同时
-提供云端文本和云端语音。显式指定 provider 时不会静默回退。可用 `CAR_GENERATION_PROVIDER`、
+提供云端文本和云端语音。显式指定 provider 时不会静默回退。可用 `CAR_GENERATION_MODEL`、
 `CAR_SPEECH_PROVIDER` 临时覆盖选择。MiniMax 云端能力需要：
 
 ```bash
 export MINIMAX_API_KEY='请替换为云端密钥'
 ```
 
-每个 generation provider 在同一个 `providers.<name>` 配置段声明自己的生成参数：
+每个生成模型在 `models.yaml` 的对应条目中声明自己的生成参数：
 
 ```yaml
 providers:
@@ -173,7 +181,7 @@ provider 的参数，切换 MiniCPM/MiniMax 时自动切换，不需要修改节
 
 ### 语音输入自动路由
 
-Agent 根据 generation provider 的 `audio_input` 能力自动选择输入路径，无需额外路由配置：
+Agent 根据生成模型的 `audio_input` 能力自动选择输入路径，无需额外路由配置：
 
 - `minicpm` 支持音频，WAV 直接交给 MiniCPM；Qwen3-ASR Worker 不会启动。
 - `minimax` 不支持音频，WAV 先由本地 Qwen3-ASR-0.6B 转写，再把文字交给 MiniMax。
@@ -182,10 +190,10 @@ Agent 根据 generation provider 的 `audio_input` 能力自动选择输入路�
 
 ```bash
 cd /mnt/d/work/smart_car
-./llm_agent/scripts/install_qwen3_asr.sh
+bash ./llm_agent/py_env/install_python_envs.sh
 ```
 
-默认环境位于 `/mnt/d/AI/venvs/qwen3-asr`，模型位于
+默认环境位于 `llm_agent/py_env/venvs/qwen3-asr`，模型位于
 `/mnt/d/AI/models/Qwen3-ASR-0.6B`。两者与 MiniCPM 环境隔离；ASR 失败、超时或返回空文本时，
 本轮请求降级为 unknown 且不会生成车辆运动任务。
 
@@ -198,9 +206,8 @@ llm_agent/
 ├── transport/ros/  # RunAgent Action Server 和类型转换
 ├── agent/          # 状态、LangGraph 编排和业务节点
 ├── skills/         # 高层任务编排，只能组合白名单 Tool
-├── models/         # MiniCPM-o 后端及输出解析
+├── models/         # 生成、ASR、语音 Provider、模型契约及输出校验
 ├── tools/          # 强类型白名单工具和统一执行注册表
-├── adapters/audio/ # Piper TTS 等外部音频适配
 ├── prompts/        # 版本化系统、意图、回复和安全提示词
 ├── config/         # 不含密钥的配置模板
 ├── docs/           # 架构、接口、部署和运行文档

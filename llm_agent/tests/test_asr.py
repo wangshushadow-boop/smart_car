@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from llm_agent.asr import Qwen3Asr, TranscriptionRequest
+from llm_agent.models.qwen3_asr import Qwen3Asr, TranscriptionRequest
 
 
 class FakeQwenModel:

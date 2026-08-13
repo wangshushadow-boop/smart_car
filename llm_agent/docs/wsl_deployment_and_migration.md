@@ -18,7 +18,8 @@
 | Linux 主目录 | `/home/llm_agent` |
 | 默认 Shell | `/usr/bin/zsh` |
 | GPU | NVIDIA GeForce RTX 3090 24 GB |
-| Python 环境 | `/opt/minicpm-service/venv` |
+| 通用 Agent 环境 | `llm_agent/py_env/venvs/agent` |
+| MiniCPM 环境 | `llm_agent/py_env/venvs/minicpm` |
 | 模型目录 | `/mnt/d/AI/models/MiniCPM-o-4_5-AWQ` |
 | 推理框架 | vLLM 0.26.0 |
 | 模型服务名 | `minicpm-o-4.5-awq` |
@@ -325,8 +326,8 @@ sudo chown -R llm_agent:llm_agent \
 创建虚拟环境：
 
 ```bash
-python3.12 -m venv /opt/minicpm-service/venv
-source /opt/minicpm-service/venv/bin/activate
+cd /mnt/d/work/smart_car
+bash ./llm_agent/py_env/install_python_envs.sh
 ```
 
 使用清华 PyPI 镜像安装 Python 包：
@@ -353,7 +354,7 @@ vllm --version
 使用 ModelScope 国内源下载：
 
 ```bash
-source /opt/minicpm-service/venv/bin/activate
+source llm_agent/py_env/venvs/minicpm/bin/activate
 modelscope download \
   --model OpenBMB/MiniCPM-o-4_5-AWQ \
   --local_dir /opt/models/MiniCPM-o-4_5-AWQ
@@ -427,7 +428,7 @@ du -sh /opt/models /opt/minicpm-service /home/llm_agent
 
 ```bash
 nvidia-smi
-source /opt/minicpm-service/venv/bin/activate
+source llm_agent/py_env/venvs/minicpm/bin/activate
 python -c "import torch; print(torch.cuda.is_available(), \
 torch.cuda.get_device_name(), torch.cuda.get_device_properties(0).total_memory)"
 ```

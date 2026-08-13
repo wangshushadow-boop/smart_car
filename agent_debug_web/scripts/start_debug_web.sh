@@ -8,4 +8,4 @@ set -u
 export PYTHONPATH="${root}:${PYTHONPATH:-}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
-exec /opt/minicpm-service/venv/bin/python -m agent_debug_web
+exec "${root}/llm_agent/py_env/venvs/agent/bin/python" -m agent_debug_web

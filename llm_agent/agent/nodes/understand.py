@@ -13,10 +13,9 @@ import logging
 
 from llm_agent.agent.prompt_loader import PromptSet
 from llm_agent.agent.state import IntentDecision, IntentType
-from llm_agent.asr import AsrBackend, TranscriptionRequest
-from llm_agent.models.protocol import ModelBackend
+from llm_agent.models.protocol import AsrBackend, ModelBackend
 from llm_agent.models.response_parser import parse_intent_decision
-from llm_agent.models.types import ModelRequest
+from llm_agent.models.types import ModelRequest, TranscriptionRequest
 from llm_agent.skills import SkillCall
 from llm_agent.tools.types import ToolCall
 

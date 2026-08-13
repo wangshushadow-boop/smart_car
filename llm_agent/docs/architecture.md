@@ -29,11 +29,10 @@
 | `transport/ros/` | `RunAgent` Action Server 以及 ROS/Runtime 类型转换 |
 | `agent/` | LangGraph、共享状态、意图、安全、工具和回复节点 |
 | `skills/` | 高层任务接口、注册表和由多个白名单 Tool 组成的任务计划 |
-| `models/` | Provider 无关模型接口、能力声明、MiniCPM 和 MiniMax 适配 |
+| `models/` | Provider 无关接口、能力声明，以及生成、ASR、语音模型实现与输出校验 |
 | `tools/` | 强类型工具协议、白名单和执行超时 |
-| `adapters/audio/` | Piper 等独立语音合成适配器 |
 | `prompts/` | 版本化系统、意图、回复和安全提示词 |
-| `app/` | 配置加载和 ROS Agent Server 进程入口 |
+| `app/` | `agent.yaml`/`models.yaml` 配置加载和 ROS Agent Server 进程入口 |
 | `tests/` | Runtime、Graph、Provider 和 ROS 转换单元测试 |
 
 调试网页位于仓库顶层 `agent_debug_web/`，不属于 Agent 服务实现。

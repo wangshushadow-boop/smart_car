@@ -54,3 +54,20 @@ class SpeechResponse(BaseModel):
     provider: str
     sample_rate: int = Field(gt=0)
     channels: int = Field(ge=1, le=8)
+
+
+class TranscriptionRequest(BaseModel):
+    """一次离线语音识别请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+    audio_data_urls: list[str] = Field(min_length=1)
+    language: str | None = None
+
+
+class TranscriptionResponse(BaseModel):
+    """归一化的语音识别结果。"""
+
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1)
+    provider: str
+    language: str = ""

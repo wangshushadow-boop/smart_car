@@ -20,6 +20,7 @@ from small_car_interfaces.action import RunAgent
 from llm_agent.runtime.runtime import AgentRuntime
 
 from .converters import progress_to_ros, request_from_ros, response_to_ros
+from .tracing import ros_trace_scope
 
 
 class AgentActionServer(Node):
@@ -49,6 +50,10 @@ class AgentActionServer(Node):
 
     def _accept_goal(self, goal_request) -> GoalResponse:
         """先做一次轻量校验，把超容量的 Goal 直接拒掉，避免 Runtime 被拖垮。"""
+        with ros_trace_scope(self._accept_goal, "AgentActionServer._accept_goal"):
+            return self._accept_goal_traced(goal_request)
+
+    def _accept_goal_traced(self, goal_request) -> GoalResponse:
         try:
             request_from_ros(
                 goal_request.request, max_inline_bytes=self._max_inline_bytes
@@ -60,10 +65,15 @@ class AgentActionServer(Node):
 
     def _accept_cancel(self, _goal_handle) -> CancelResponse:
         """始终接受取消请求；具体的中断由 Runtime 内部令牌驱动。"""
-        return CancelResponse.ACCEPT
+        with ros_trace_scope(self._accept_cancel, "AgentActionServer._accept_cancel"):
+            return CancelResponse.ACCEPT
 
     def _execute(self, goal_handle):
         """单 Goal 完整执行：转换 → Runtime → 反馈 → 取消监听。"""
+        with ros_trace_scope(self._execute, "AgentActionServer._execute"):
+            return self._execute_traced(goal_handle)
+
+    def _execute_traced(self, goal_handle):
         request = request_from_ros(
             goal_handle.request.request, max_inline_bytes=self._max_inline_bytes
         )

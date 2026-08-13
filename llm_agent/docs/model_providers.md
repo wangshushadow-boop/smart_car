@@ -1,11 +1,12 @@
 # 模型 Provider
 
-## 两类独立接口
+## 三类独立接口
 
-Agent 将理解/回复和语音合成分成两个接口：
+Agent 将理解/回复、语音识别和语音合成分成三个接口：
 
 ```text
 GenerationBackend 处理文本、图像、音频输入并返回最终文本
+AsrBackend        在生成模型不支持音频时把语音转成文本
 SpeechBackend     接收最终文本并返回标准 WAV
 ```
 
@@ -26,11 +27,16 @@ MiniMax-M3 的 OpenAI/Anthropic 兼容接口支持文本和图片；适配器会
 
 ## 配置
 
-默认配置位于 `llm_agent/config/agent.yaml`：
+模型选择位于 `llm_agent/config/agent.yaml`，模型参数统一位于
+`llm_agent/config/models.yaml`：
 
 ```yaml
-generation:
+generation_model:
   provider: minicpm
+
+asr:
+  provider: auto
+  fallback: qwen3_asr
 
 speech:
   provider: auto
@@ -38,20 +44,24 @@ speech:
   fallback: piper
 ```
 
+`models.yaml` 的条目名是可选择的模型实例，`backend` 是复用的代码实现，
+`roles` 声明该实例可承担 `generation_model`、`asr` 或 `speech`。模型路径、独立
+Python 环境、设备、端点、超时及生成参数都保存在对应条目中；密钥仍只放环境变量。
+
 语音选择规则：
 
 - `piper`、`minimax`：严格使用指定 provider，失败时保留文本并报告 TTS 错误；
-- `native` 或 `same_provider`：严格使用 generation provider 的语音能力；
+- `native` 或 `same_provider`：严格使用当前生成模型的语音能力；
 - `auto`：优先 `preferred`，不可创建或合成失败时使用 `fallback`。
 
-当 generation provider 为 MiniCPM 时，`same_provider` 没有对应的独立语音后端：`auto` 会直接选择
+当生成模型为 MiniCPM 时，`same_provider` 没有对应的独立语音后端：`auto` 会直接选择
 Piper；显式设置 `speech.provider=minicpm`、`native` 或 `same_provider` 会在启动时安全报错，不会向
 Omni Talker 发出请求。
 
 环境变量覆盖：
 
 ```bash
-export CAR_GENERATION_PROVIDER=minicpm
+export CAR_GENERATION_MODEL=minicpm
 export CAR_SPEECH_PROVIDER=auto
 ```
 
@@ -61,32 +71,39 @@ MiniMax 密钥只能通过环境变量提供：
 export MINIMAX_API_KEY='请替换为真实密钥'
 ```
 
-可独立验证某个语音 provider，不启动 ROS：
+模型 Provider 的自动化测试统一放在 `llm_agent/tests/`，不在 `scripts/`
+维护重复测试入口。可运行相关测试：
 
 ```bash
-/opt/minicpm-service/venv/bin/python -m llm_agent.scripts.test_speech_provider \
-  --provider piper
+llm_agent/py_env/venvs/agent/bin/python -m unittest \
+  llm_agent.tests.test_asr \
+  llm_agent.tests.test_model_providers \
+  llm_agent.tests.test_provider_config
 ```
 
-增加 `--output /tmp/speech.wav` 可以保存测试 WAV；不指定时只在内存中验证并打印格式信息。
+需要连同 ROS 接口和 Web Debug 一起验证时执行：
+
+```bash
+bash ./llm_agent/tests/run_tests.sh
+```
 
 常用组合：
 
 ```yaml
 # 本地多模态 + Piper 本地语音
-generation: {provider: minicpm}
+generation_model: {provider: minicpm}
 speech: {provider: auto, preferred: same_provider, fallback: piper}
 ```
 
 ```yaml
 # 本地多模态 + MiniMax 云端语音，失败回退 Piper
-generation: {provider: minicpm}
+generation_model: {provider: minicpm}
 speech: {provider: auto, preferred: minimax, fallback: piper}
 ```
 
 ```yaml
 # MiniMax 云端文本 + MiniMax 云端语音
-generation: {provider: minimax}
+generation_model: {provider: minimax}
 speech: {provider: minimax, preferred: same_provider, fallback: piper}
 ```
 

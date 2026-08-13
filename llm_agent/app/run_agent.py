@@ -86,7 +86,8 @@ def main() -> None:
                 max_inline_bytes=config.runtime.max_inline_bytes,
             )
             node.get_logger().info(
-                f"Agent 已启动：generation={generation_name}, speech={speech_name}"
+                f"Agent 已启动：generation_model={generation_name}, "
+                f"speech={speech_name}"
             )
             # 多线程 Executor：feedback publish 与 goal 处理不会互相阻塞。
             executor = MultiThreadedExecutor(num_threads=4)
