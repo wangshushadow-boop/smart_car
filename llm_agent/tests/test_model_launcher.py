@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from llm_agent.scripts.start_models import command_for, main
+from llm_agent.scripts.start_models import command_for, main, process_environment
 
 
 class ModelLauncherTest(unittest.TestCase):
@@ -44,35 +44,41 @@ models:
         self.assertIn("piper: speech", output.getvalue())
         self.assertNotIn("minimax", output.getvalue())
 
-    def test_qwen_command_uses_isolated_service_environment(self) -> None:
+    def test_command_is_read_from_yaml_without_model_specific_branch(self) -> None:
         command = command_for(
-            "qwen3_asr",
+            "future_model",
             {
-                "command": "qwen3_asr",
-                "python": "/env/qwen/bin/python",
-                "model": "/models/qwen",
-                "device": "cuda:0",
-                "port": 8100,
+                "command": [
+                    "/env/future/bin/python",
+                    "-m",
+                    "vendor.future.server",
+                    "--port",
+                    8200,
+                ]
             },
         )
-        self.assertEqual(command[0], "/env/qwen/bin/python")
-        self.assertIn("llm_agent.models.qwen3_asr.server", command)
-        self.assertIn("/models/qwen", command)
+        self.assertEqual(
+            command,
+            [
+                "/env/future/bin/python",
+                "-m",
+                "vendor.future.server",
+                "--port",
+                "8200",
+            ],
+        )
 
-    def test_piper_command_uses_service_entrypoint(self) -> None:
-        command = command_for(
-            "piper",
-            {
-                "command": "piper",
-                "python": "/env/agent/bin/python",
-                "model": "/models/piper.onnx",
-                "config": "/models/piper.onnx.json",
-                "port": 8101,
-            },
-        )
-        self.assertEqual(command[0], "/env/agent/bin/python")
-        self.assertIn("llm_agent.models.piper.server", command)
-        self.assertIn("/models/piper.onnx", command)
+    def test_invalid_command_reports_model_name(self) -> None:
+        with self.assertRaisesRegex(ValueError, "piper"):
+            command_for("piper", {"command": "piper"})
+
+    def test_environment_adds_model_specific_values(self) -> None:
+        with patch.dict("os.environ", {"EXISTING": "kept"}, clear=True):
+            environment = process_environment(
+                "future_model", {"environment": {"CUDA_VISIBLE_DEVICES": 0}}
+            )
+        self.assertEqual(environment["EXISTING"], "kept")
+        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "0")
 
 
 if __name__ == "__main__":

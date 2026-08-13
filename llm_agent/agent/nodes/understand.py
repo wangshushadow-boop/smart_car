@@ -10,11 +10,13 @@
 from __future__ import annotations
 
 import logging
+import math
+import re
 
 from llm_agent.agent.prompt_loader import PromptSet
 from llm_agent.agent.state import IntentDecision, IntentType
 from llm_agent.models.protocol import AsrBackend, ModelBackend
-from llm_agent.models.response_parser import parse_intent_decision
+from llm_agent.models.response_parser import parse_json_object
 from llm_agent.models.types import ModelRequest, TranscriptionRequest
 from llm_agent.skills import SkillCall
 from llm_agent.tools.types import ToolCall
@@ -23,6 +25,55 @@ from .common import request_inputs
 
 
 _MODEL_OUTPUT_LOGGER = logging.getLogger("llm_agent.model_output")
+
+
+def _normalize_rotation_direction(decision: IntentDecision) -> IntentDecision:
+    """在 Agent 边界内校验实车旋转语义并归一化方向和角度。"""
+    if (
+        decision.intent != IntentType.ACTION
+        or decision.tool_name != "rotate_relative"
+        or "angle_deg" not in decision.arguments
+    ):
+        return decision
+
+    arguments = dict(decision.arguments)
+    direction = arguments.get("direction")
+    if direction not in {"left", "right", None}:
+        return IntentDecision(
+            intent=IntentType.UNKNOWN, reason="旋转任务 direction 字段无效"
+        )
+    if direction is None:
+        reason = decision.reason.lower()
+        has_left = "左转" in reason or bool(re.search(r"\bturn\s+left\b", reason))
+        has_right = "右转" in reason or bool(re.search(r"\bturn\s+right\b", reason))
+        if has_left == has_right:
+            return IntentDecision(
+                intent=IntentType.UNKNOWN, reason="旋转任务没有唯一明确的左右方向"
+            )
+        direction = "left" if has_left else "right"
+
+    try:
+        angle = float(arguments["angle_deg"])
+    except (TypeError, ValueError):
+        return IntentDecision(
+            intent=IntentType.UNKNOWN, reason="旋转任务角度不是有效数值"
+        )
+    if not math.isfinite(angle):
+        return IntentDecision(
+            intent=IntentType.UNKNOWN, reason="旋转任务角度不是有限数值"
+        )
+    arguments["direction"] = direction
+    arguments["angle_deg"] = abs(angle)
+    return decision.model_copy(update={"arguments": arguments})
+
+
+def _parse_intent_decision(text: str) -> IntentDecision:
+    """把模型层返回的通用字典转换成 Agent 自己的强类型意图。"""
+    try:
+        decision = IntentDecision.model_validate(parse_json_object(text))
+        return _normalize_rotation_direction(decision)
+    except ValueError as error:
+        return IntentDecision(intent=IntentType.UNKNOWN, reason=f"意图格式无效：{error}")
 
 
 def create_understand_node(
@@ -95,7 +146,7 @@ def create_understand_node(
                 response.provider,
                 response.text,
             )
-            decision = parse_intent_decision(response.text)
+            decision = _parse_intent_decision(response.text)
             _MODEL_OUTPUT_LOGGER.info(
                 "request_id=%s stage=intent 解析结果：%s",
                 request.request_id,

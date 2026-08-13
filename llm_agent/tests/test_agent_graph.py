@@ -373,6 +373,28 @@ class AgentGraphTest(unittest.TestCase):
         self.assertIn("前进1米", result["answer"])
         self.assertEqual(len(model.requests), 1)
 
+    def test_rotation_direction_is_inferred_inside_agent(self) -> None:
+        model = FakeModel([
+            "{'intent':'action','tool_name':'rotate_relative',"
+            "'arguments':{'angle_deg':-45},'reason':'用户要求向左转'}"
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()), make_request("向左转四十五度")
+        )
+        self.assertEqual(result["command"]["angle_deg"], 45.0)
+
+    def test_ambiguous_rotation_is_rejected_inside_agent(self) -> None:
+        model = FakeModel([
+            "{'intent':'action','tool_name':'rotate_relative',"
+            "'arguments':{'angle_deg':90},'reason':'执行旋转'}"
+        ])
+        result = invoke(
+            build_graph(model=model, tts=FakeTts()), make_request("旋转九十度")
+        )
+        self.assertNotIn("command", result)
+        self.assertEqual(result["intent"].intent.value, "unknown")
+        self.assertIn("方向", result["intent"].reason)
+
     def test_motion_sequence_skill_becomes_validated_plan(self) -> None:
         model = FakeModel([
             '{"intent":"skill","tool_name":null,'

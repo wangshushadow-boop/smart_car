@@ -19,10 +19,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from llm_agent.models.minicpm import MiniCpmModel
-from llm_agent.models.piper import PiperSpeech
 from llm_agent.models.protocol import AsrBackend, ModelBackend, SpeechBackend
-from llm_agent.models.qwen3_asr import Qwen3Asr
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry
 from llm_agent.tools.registry import ToolRegistry
 from llm_agent.tools.vehicle import (
@@ -46,31 +43,22 @@ from .prompt_loader import PromptSet, load_prompts
 from .state import AgentState, IntentType
 
 
-_DEFAULT_ASR = object()
-
-
 def build_graph(
-    model: ModelBackend | None = None,
-    tts: SpeechBackend | None = None,
+    model: ModelBackend,
+    tts: SpeechBackend,
     registry: ToolRegistry | None = None,
     prompts: PromptSet | None = None,
     status_provider: RobotStatusProvider | None = None,
     skill_registry: SkillRegistry | None = None,
-    asr: AsrBackend | None | object = _DEFAULT_ASR,
+    asr: AsrBackend | None = None,
 ):
     """构造并编译 LangGraph。
 
-    所有依赖都可由调用方显式注入，方便单元测试使用假实现；不传则走默认
-    Provider（MiniCPM + Piper）和默认 Tool/Skill 白名单。
+    模型依赖必须由 ``runtime.factory`` 显式注入。Graph 只依赖模型协议，
+    不知道 MiniCPM、Piper、Qwen 等具体 Provider。
 
     返回值是可执行图（`CompiledStateGraph`），由 `AgentRuntime` 直接调用。
     """
-    # 默认 Provider：本地 MiniCPM + Piper，便于独立启动进程。
-    model = model or MiniCpmModel()
-    tts = tts or PiperSpeech()
-    # 适配器本身很轻，Qwen 权重只在生成模型不支持音频且收到音频时加载。
-    if asr is _DEFAULT_ASR:
-        asr = Qwen3Asr()
     prompts = prompts or load_prompts()
     # Tool 白名单：4 个声明式底盘 Tool，全部由树莓派侧二次校验后真正执行。
     if registry is None:

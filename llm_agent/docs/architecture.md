@@ -37,6 +37,26 @@
 
 调试网页位于仓库顶层 `agent_debug_web/`，不属于 Agent 服务实现。
 
+## 依赖方向
+
+模型与 Agent 遵循单向依赖，禁止 Provider 反向引用 Agent 状态：
+
+```text
+models.yaml
+    ↓
+models/registry.py ──创建──> Generation / ASR / Speech 协议实现
+    ↓                                  ↓
+runtime/factory.py ───────显式注入────> agent/graph.py
+```
+
+`agent/graph.py` 不实例化具体模型；所有模型选择和装配统一由
+`runtime/factory.py` 完成。`models/response_parser.py` 只解析通用 JSON 对象，
+车辆意图、方向和安全规则属于 `agent/`。
+
+模型进程同样独立于 Agent：`scripts/start_models.py` 只读取 `models.yaml` 中
+`deployment.command` 的参数数组并管理进程及健康检查，不导入模型实现，也不读取
+`agent.yaml`。新增可执行模型服务只需要增加配置，不需要修改启动器分支。
+
 ## 统一全模态请求
 
 `RuntimeRequest.inputs` 是内容块数组，支持：

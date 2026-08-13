@@ -1,4 +1,4 @@
-"""按 ``models.yaml`` Profile 统一启动本地模型服务。
+"""按 ``models.yaml`` 统一启动本地模型服务。
 
 本文件只负责模型进程的生命周期，不读取 ``agent.yaml``，也不会启动 Agent。
 用户在命令行中明确给出一个或多个模型名；启动器依次创建子进程、等待健康
@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener
 
 import yaml
 
@@ -22,45 +23,31 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def command_for(name: str, deployment: dict) -> list[str]:
-    """把一个模型的 deployment 配置转换为不经过 Shell 的命令参数数组。"""
+    """读取通用命令数组；启动器不识别任何具体模型或推理框架。"""
     command = deployment.get("command")
-    # MiniCPM 的 CUDA 环境变量和 vLLM 参数较多，继续复用专用启动脚本。
-    if command == "minicpm":
-        return ["bash", str(ROOT / "llm_agent/scripts/start_minicpm_omni.sh")]
-    if command == "qwen3_asr":
-        return [
-            str(deployment["python"]),
-            "-m",
-            "llm_agent.models.qwen3_asr.server",
-            "--model",
-            str(deployment["model"]),
-            "--device",
-            str(deployment.get("device", "cuda:0")),
-            "--host",
-            str(deployment.get("host", "127.0.0.1")),
-            "--port",
-            str(deployment.get("port", 8100)),
-        ]
-    if command == "piper":
-        return [
-            str(deployment["python"]),
-            "-m",
-            "llm_agent.models.piper.server",
-            "--model",
-            str(deployment["model"]),
-            "--config",
-            str(deployment["config"]),
-            "--host",
-            str(deployment.get("host", "127.0.0.1")),
-            "--port",
-            str(deployment.get("port", 8101)),
-        ]
-    raise ValueError(f"unsupported deployment command for {name}: {command}")
+    if not isinstance(command, list) or not command:
+        raise ValueError(f"{name} deployment.command 必须是非空参数数组")
+    if not all(isinstance(argument, (str, int, float)) for argument in command):
+        raise ValueError(f"{name} deployment.command 只能包含字符串或数字")
+    return [str(argument) for argument in command]
+
+
+def process_environment(name: str, deployment: dict) -> dict[str, str]:
+    """把可选环境变量合并到当前环境，不经过 Shell 展开。"""
+    configured = deployment.get("environment", {})
+    if not isinstance(configured, dict):
+        raise ValueError(f"{name} deployment.environment 必须是对象")
+    environment = os.environ.copy()
+    environment.update({str(key): str(value) for key, value in configured.items()})
+    return environment
 
 
 def wait_ready(name: str, deployment: dict, process: subprocess.Popen) -> None:
     """轮询模型健康接口，直到服务就绪、进程退出或超过启动时限。"""
     health_url = str(deployment["health_url"])
+    # 本地健康检查不得经过 HTTP_PROXY；否则 WSL 中即使服务已经监听，
+    # urllib 仍可能把 127.0.0.1 请求发给代理并最终误报超时。
+    opener = build_opener(ProxyHandler({}))
     deadline = time.monotonic() + float(
         deployment.get("startup_timeout_seconds", 60)
     )
@@ -69,7 +56,7 @@ def wait_ready(name: str, deployment: dict, process: subprocess.Popen) -> None:
         if code is not None:
             raise RuntimeError(f"{name} exited during startup: {code}")
         try:
-            with urlopen(health_url, timeout=2) as response:
+            with opener.open(health_url, timeout=2) as response:
                 if response.status == 200:
                     print(f"model ready: {name} ({health_url})", flush=True)
                     return
@@ -174,11 +161,15 @@ def main() -> int:
             if not deployment.get("local", False):
                 continue
             print(f"starting model: {name}", flush=True)
-            process = subprocess.Popen(command_for(name, deployment), cwd=ROOT)
+            process = subprocess.Popen(
+                command_for(name, deployment),
+                cwd=ROOT,
+                env=process_environment(name, deployment),
+            )
             processes.append((name, process))
             wait_ready(name, deployment, process)
         if not processes:
-            print(f"profile {args.profile} has no local models", flush=True)
+            print("没有启动任何本地模型", flush=True)
             return 0
         print(f"models ready: {', '.join(names)}", flush=True)
         while True:

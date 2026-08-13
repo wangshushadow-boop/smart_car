@@ -17,7 +17,18 @@ models:
       audio_input: true
     deployment:
       local: true
-      command: minicpm
+      # 通用参数数组由启动器原样执行；新增模型时不需要修改 Python 代码。
+      command:
+        - /mnt/d/work/smart_car/llm_agent/py_env/venvs/minicpm/bin/vllm
+        - serve
+        - /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
+        - --omni
+        - --host
+        - 0.0.0.0
+        - --port
+        - 8099
+        - --deploy-config
+        - /mnt/d/work/smart_car/llm_agent/config/minicpmo_4_5_awq_3090.yaml
       health_url: http://127.0.0.1:8099/health
       startup_timeout_seconds: 180
 
@@ -52,12 +63,18 @@ models:
     timeout_seconds: 120
     deployment:
       local: true
-      command: qwen3_asr
-      python: /mnt/d/work/smart_car/llm_agent/py_env/venvs/qwen3-asr/bin/python
-      model: /mnt/d/AI/models/Qwen3-ASR-0.6B
-      device: cuda:0
-      host: 127.0.0.1
-      port: 8100
+      command:
+        - /mnt/d/work/smart_car/llm_agent/py_env/venvs/qwen3-asr/bin/python
+        - -m
+        - llm_agent.models.qwen3_asr.server
+        - --model
+        - /mnt/d/AI/models/Qwen3-ASR-0.6B
+        - --device
+        - cuda:0
+        - --host
+        - 127.0.0.1
+        - --port
+        - 8100
       health_url: http://127.0.0.1:8100/health
       startup_timeout_seconds: 180
 
@@ -68,11 +85,17 @@ models:
     timeout_seconds: 30
     deployment:
       local: true
-      command: piper
-      python: /mnt/d/work/smart_car/llm_agent/py_env/venvs/agent/bin/python
-      model: /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx
-      config: /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx.json
-      host: 127.0.0.1
-      port: 8101
+      command:
+        - /mnt/d/work/smart_car/llm_agent/py_env/venvs/agent/bin/python
+        - -m
+        - llm_agent.models.piper.server
+        - --model
+        - /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx
+        - --config
+        - /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx.json
+        - --host
+        - 127.0.0.1
+        - --port
+        - 8101
       health_url: http://127.0.0.1:8101/health
       startup_timeout_seconds: 30

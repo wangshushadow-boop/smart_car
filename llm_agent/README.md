@@ -153,6 +153,24 @@ speech:
 模型路径、隔离 Python 环境、设备、服务地址和推理参数统一保存在
 `config/models.yaml`。`agent.yaml` 只保留模型选择和 Agent 行为配置。
 
+本地模型的 `deployment.command` 是不经过 Shell 的命令参数数组。例如：
+
+```yaml
+deployment:
+  local: true
+  command:
+    - /path/to/python
+    - -m
+    - package.model_server
+    - --port
+    - 8100
+  health_url: http://127.0.0.1:8100/health
+```
+
+启动器不包含 MiniCPM、Qwen 或 Piper 的名称判断；新增模型时只需要补充该配置。
+如需设置单个服务的环境变量，可在 `deployment.environment` 中声明键值。健康检查
+固定绕过系统代理，避免 WSL 的 `HTTP_PROXY` 导致本机服务被误报为超时。
+
 `auto` 优先使用推理 provider 已注册的独立语音能力，没有时直接使用 Piper。当前 MiniCPM-o 的
 vLLM-Omni 服务没有安全的独立 TTS 接口，因此默认组合是 MiniCPM 推理 + Piper；MiniMax 仍可同时
 提供云端文本和云端语音。显式指定 provider 时不会静默回退。可用 `CAR_GENERATION_MODEL`、
