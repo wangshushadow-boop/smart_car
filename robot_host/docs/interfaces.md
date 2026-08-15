@@ -13,6 +13,7 @@ Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 | 输出 | `/wheel/odom_raw` | `nav_msgs/msg/Odometry` | 未融合轮式里程计 |
 | 输出 | `/imu/data_raw` | `sensor_msgs/msg/Imu` | MCU 原始 IMU 换算值 |
 | 输出 | `/odom` | `nav_msgs/msg/Odometry` | EKF 融合结果 |
+| 输出 | `/car/path` | `nav_msgs/msg/Path` | 基于 `/odom` 累积的 RViz 调试轨迹 |
 | 输出 | `/ultrasonic/front` | `sensor_msgs/msg/Range` | 前向超声距离 |
 | 输出 | `/joint_states` | `sensor_msgs/msg/JointState` | 四轮与云台关节状态 |
 | 输出 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | 串口、MCU 和传感器状态 |

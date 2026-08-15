@@ -21,6 +21,7 @@ ros2 launch small_car_nav2 system.launch.py \
 
 ```bash
 ros2 topic hz /odom
+ros2 topic echo /car/path --once
 ros2 topic echo /ultrasonic/front --once
 ros2 run tf2_ros tf2_echo odom base_link
 ros2 lifecycle nodes

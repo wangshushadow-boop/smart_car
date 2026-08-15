@@ -11,6 +11,7 @@ if(ROBOT_HOST_BUILD_CORE)
     small_car_base/mcu/car_client.cpp
     small_car_base/protocol/protocol.cpp
     small_car_base/servo/gimbal_controller.cpp
+    small_car_base/trajectory/path_accumulator.cpp
     small_car_base/transport/serial_port.cpp
   )
   target_compile_features(robot_host_core PUBLIC cxx_std_17)
@@ -62,4 +63,10 @@ if(ROBOT_HOST_BUILD_TESTS AND ROBOT_HOST_BUILD_CORE)
     COMMAND chassis_config_test
             ${CMAKE_CURRENT_SOURCE_DIR}/../ros/small_car_base/config/chassis.yaml
   )
+
+  add_executable(path_accumulator_test
+    small_car_base/trajectory/path_accumulator_test.cpp
+  )
+  target_link_libraries(path_accumulator_test PRIVATE robot_host_core)
+  add_test(NAME path_accumulator_test COMMAND path_accumulator_test)
 endif()

@@ -112,6 +112,15 @@ topics:
     qos: default
     publisher: robot_localization/ekf_node
 
+  # 将 EKF 里程计位姿累积成有界历史轨迹，供 RViz 等调试工具显示。
+  # 轨迹位于 odom 坐标系；它是相对里程计轨迹，会随累计误差产生漂移。
+  trajectory_path:
+    name: /car/path
+    type: nav_msgs/msg/Path
+    qos: transient_local
+    publisher: robot_host/odom_path_node
+    subscribers: [rviz]
+
   # robot_localization 的固定内部输出名。base.launch 将它重映射到 odom，
   # 因而其他模块不得订阅本 topic；保留条目仅用于避免 launch 中出现硬编码。
   ekf_filtered_output:

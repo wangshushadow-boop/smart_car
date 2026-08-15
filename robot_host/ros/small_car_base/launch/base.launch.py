@@ -25,6 +25,7 @@ def _load_topics() -> dict[str, str]:
         "joint_states",
         "diagnostics",
         "odom",
+        "trajectory_path",
         "ekf_filtered_output",
     )
     result = {}
@@ -89,6 +90,18 @@ def generate_launch_description():
                 {"use_sim_time": LaunchConfiguration("use_sim_time")},
             ],
             remappings=[(topics["ekf_filtered_output"], topics["odom"])],
+        ),
+        Node(
+            package="small_car_base",
+            executable="odom_path_node",
+            name="odom_path",
+            output="screen",
+            parameters=[{
+                "odom_topic": topics["odom"],
+                "path_topic": topics["trajectory_path"],
+                "max_points": 5000,
+                "min_distance_m": 0.02,
+            }],
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(

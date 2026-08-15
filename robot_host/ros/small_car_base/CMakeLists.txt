@@ -39,7 +39,15 @@ target_link_libraries(small_car_base_node PRIVATE
   sensor_msgs::sensor_msgs_library
 )
 
-install(TARGETS robot_host_core small_car_base_node
+add_executable(odom_path_node ros/odom_path_node.cpp)
+target_link_libraries(odom_path_node PRIVATE
+  robot_host_core
+  ${geometry_msgs_TARGETS}
+  ${nav_msgs_TARGETS}
+  rclcpp::rclcpp
+)
+
+install(TARGETS robot_host_core small_car_base_node odom_path_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
