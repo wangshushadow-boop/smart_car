@@ -25,7 +25,9 @@ class GenerationCapabilities(BaseModel):
     audio_input: bool = False
     video_input: bool = False
     tool_calling: bool = False
-    response_max_tokens: int = Field(default=256, ge=1, le=4096)
+    # 输出上限属于具体模型能力，由 models.yaml 按 Provider 声明；统一协议只
+    # 校验正数，不再用本地常量截断云端模型支持的最大输出。
+    max_output_tokens: int = Field(default=256, ge=1)
     response_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
 
@@ -44,7 +46,8 @@ class ModelRequest(BaseModel):
     audio_data_urls: list[str] = Field(default_factory=list)
     image_data_urls: list[str] = Field(default_factory=list)
     video_data_urls: list[str] = Field(default_factory=list)
-    max_tokens: int = Field(default=256, ge=1, le=4096)
+    # 请求值由对应 Provider 的能力配置产生，不在跨模型协议层设置上限。
+    max_tokens: int = Field(default=256, ge=1)
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
 

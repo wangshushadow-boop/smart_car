@@ -84,7 +84,7 @@ class ModelProvidersTest(unittest.TestCase):
     def test_minicpm_maps_all_input_modalities(self) -> None:
         client = FakeOpenAiClient()
         model = MiniCpmGeneration(client=client)
-        self.assertEqual(model.capabilities.response_max_tokens, 256)
+        self.assertEqual(model.capabilities.max_output_tokens, 256)
         model.complete(
             ModelRequest(
                 system_prompt="system",
@@ -103,7 +103,7 @@ class ModelProvidersTest(unittest.TestCase):
     def test_minimax_generation_uses_provider_specific_parameters(self) -> None:
         client = FakeOpenAiClient()
         model = MiniMaxGeneration({"model": "MiniMax-M3"}, client=client)
-        self.assertEqual(model.capabilities.response_max_tokens, 2048)
+        self.assertEqual(model.capabilities.max_output_tokens, 2048)
         response = model.complete(
             ModelRequest(
                 system_prompt="system",
@@ -119,7 +119,7 @@ class ModelProvidersTest(unittest.TestCase):
     def test_generation_parameters_can_be_overridden_per_provider(self) -> None:
         minicpm = MiniCpmGeneration(
             {
-                "response_max_tokens": 640,
+                "max_output_tokens": 640,
                 "response_temperature": 0.4,
             },
             client=FakeOpenAiClient(),
@@ -127,17 +127,17 @@ class ModelProvidersTest(unittest.TestCase):
         minimax_client = FakeOpenAiClient()
         minimax = MiniMaxGeneration(
             {
-                "response_max_tokens": 1536,
+                "max_output_tokens": 1536,
                 "response_temperature": 0.3,
                 "reasoning_split": False,
             },
             client=minimax_client,
         )
 
-        self.assertEqual(minicpm.capabilities.response_max_tokens, 640)
+        self.assertEqual(minicpm.capabilities.max_output_tokens, 640)
         self.assertEqual(minicpm.capabilities.response_temperature, 0.4)
         self.assertEqual(minimax.capabilities.response_temperature, 0.3)
-        self.assertEqual(minimax.capabilities.response_max_tokens, 1536)
+        self.assertEqual(minimax.capabilities.max_output_tokens, 1536)
         minimax.complete(ModelRequest(system_prompt="system", user_prompt="hello"))
         self.assertFalse(
             minimax_client.chat.completions.arguments["extra_body"]["reasoning_split"]

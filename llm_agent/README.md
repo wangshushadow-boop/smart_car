@@ -188,7 +188,7 @@ export MINIMAX_API_KEY='请替换为云端密钥'
 models:
   minimax:
     input: [text, image]
-    response_max_tokens: 2048
+    max_output_tokens: 32768
     response_temperature: 0.2
     reasoning_split: true
 ```

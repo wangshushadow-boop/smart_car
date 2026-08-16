@@ -112,9 +112,11 @@ class ModelConfig(BaseModel):
     input: list[Literal["text", "image", "audio", "video"]] = Field(
         default_factory=list
     )
+    # 由每个生成模型声明自身最大输出；只要求为正数，不设置统一上限。
+    max_output_tokens: int | None = Field(default=None, ge=1)
 
     def settings(self) -> dict:
-        payload = self.model_dump()
+        payload = self.model_dump(exclude_none=True)
         payload.pop("backend", None)
         payload.pop("roles", None)
         return payload

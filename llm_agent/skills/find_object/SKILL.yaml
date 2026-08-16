@@ -26,6 +26,6 @@ allowed_tools:
 
 limits:
   max_steps: 12
-  timeout_seconds: 90
+  timeout_seconds: 240
   max_total_rotation_deg: 360
   max_total_distance_m: 1.5

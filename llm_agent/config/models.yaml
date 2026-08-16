@@ -10,7 +10,7 @@ models:
     device: cuda:0
     timeout_seconds: 90
     max_retries: 1
-    response_max_tokens: 256
+    max_output_tokens: 256
     response_temperature: 0.2
     deployment:
       local: true
@@ -38,7 +38,8 @@ models:
     model: MiniMax-M3
     timeout_seconds: 90
     max_retries: 1
-    response_max_tokens: 2048
+    # MiniMax-M3 官方最大输出为 32K；本地协议不再额外限制。
+    max_output_tokens: 32768
     response_temperature: 0.2
     reasoning_split: true
     speech_url: https://api.minimaxi.com/v1/t2a_v2

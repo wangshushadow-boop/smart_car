@@ -26,7 +26,7 @@ class MiniMaxGeneration:
         video_input=False,
         tool_calling=True,
         # MiniMax 推理模型会先生成 reasoning；预算过小可能在最终 JSON 前截断。
-        response_max_tokens=2048,
+        max_output_tokens=2048,
         response_temperature=0.2,
     )
 
@@ -45,7 +45,7 @@ class MiniMaxGeneration:
                 "image_input": "image" in inputs,
                 "audio_input": "audio" in inputs,
                 "video_input": "video" in inputs,
-                "response_max_tokens": settings.get("response_max_tokens", 2048),
+                "max_output_tokens": settings.get("max_output_tokens", 2048),
                 "response_temperature": settings.get("response_temperature", 0.2),
             }
         )

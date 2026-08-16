@@ -78,7 +78,7 @@ class PromptBuilder:
             audio_data_urls=audio_urls,
             image_data_urls=image_urls,
             video_data_urls=video_urls,
-            max_tokens=self._model.capabilities.response_max_tokens,
+            max_tokens=self._model.capabilities.max_output_tokens,
             temperature=min(self._model.capabilities.response_temperature, 0.2),
         )
 

@@ -27,7 +27,7 @@ class MiniCpmGeneration:
         # The service supports video, but ModelRequest does not expose it yet.
         video_input=True,
         tool_calling=False,
-        response_max_tokens=256,
+        max_output_tokens=256,
         response_temperature=0.2,
     )
 
@@ -41,7 +41,7 @@ class MiniCpmGeneration:
                 "image_input": "image" in inputs,
                 "audio_input": "audio" in inputs,
                 "video_input": "video" in inputs,
-                "response_max_tokens": settings.get("response_max_tokens", 256),
+                "max_output_tokens": settings.get("max_output_tokens", 256),
                 "response_temperature": settings.get("response_temperature", 0.2),
             }
         )
