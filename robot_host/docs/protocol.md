@@ -226,7 +226,7 @@ STATUS 负载：
 
 ```bash
 ctest --test-dir robot_host/build-host --output-on-failure
-python3 robot_host/tools/mcu_ota.py --status --device /dev/small_car_mcu
+python3 small_car_f407/scripts/mcu_ota.py --status --device /dev/small_car_mcu
 ```
 
 抓包时先验证 `AA 55`、版本、长度与 CRC，再按 MSG 解释负载。协议新增消息只能使用未占用 ID；参数 ID 只能追加，不能改变现有编号或单位。

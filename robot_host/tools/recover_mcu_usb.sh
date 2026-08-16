@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-workspace_dir="/home/ubuntu/small_car_f407"
+workspace_dir="/home/ubuntu/smart_car"
 project_dir="${workspace_dir}/robot_host"
 compose_dir="${workspace_dir}/ros_middleware/docker"
 request_file="${project_dir}/runtime/mcu_recovery.request"

@@ -2,7 +2,7 @@
 Description=监视小车 MCU USB 恢复请求
 
 [Path]
-PathExists=/home/ubuntu/small_car_f407/robot_host/runtime/mcu_recovery.request
+PathExists=/home/ubuntu/smart_car/robot_host/runtime/mcu_recovery.request
 Unit=small-car-mcu-recovery.service
 
 [Install]

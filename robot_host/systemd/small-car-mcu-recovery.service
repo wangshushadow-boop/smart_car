@@ -5,4 +5,4 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/home/ubuntu/small_car_f407/robot_host/tools/recover_mcu_usb.sh
+ExecStart=/home/ubuntu/smart_car/robot_host/tools/recover_mcu_usb.sh

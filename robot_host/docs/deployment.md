@@ -36,7 +36,7 @@ test -e /dev/video0
 .\robot_host\scripts\sync_ros2_host.ps1 `
   -HostAddress 192.168.3.85 `
   -UserName ubuntu `
-  -RemoteWorkspace /home/ubuntu/small_car_f407
+  -RemoteWorkspace /home/ubuntu/smart_car
 ```
 
 脚本会上传 `robot_host` 与 `ros_middleware`、编译并测试核心库、清理旧容器和 ROS 安装空间、
@@ -46,7 +46,7 @@ test -e /dev/video0
 ## 手动启动
 
 ```bash
-cd ~/small_car_f407/ros_middleware/docker
+cd ~/smart_car/ros_middleware/docker
 docker compose up --build -d --force-recreate
 docker compose ps
 docker compose logs -f --tail=100
@@ -62,7 +62,7 @@ docker compose restart small_car_ros2
 ## 运行检查
 
 ```bash
-cd ~/small_car_f407/ros_middleware/docker
+cd ~/smart_car/ros_middleware/docker
 docker compose exec small_car_ros2 bash -lc '
   source /opt/ros/kilted/setup.bash
   source /workspace/smart_car/robot_host/install-ros/setup.bash
@@ -87,7 +87,7 @@ docker compose exec small_car_ros2 \
 低速运动测试前先架空车轮并准备断电：
 
 ```bash
-cd ~/small_car_f407/ros_middleware/docker
+cd ~/smart_car/ros_middleware/docker
 docker compose exec small_car_ros2 bash -lc '
   source /opt/ros/kilted/setup.bash
   source /workspace/smart_car/robot_host/install-ros/setup.bash
@@ -104,14 +104,14 @@ docker compose exec small_car_ros2 bash -lc '
 
 ```bash
 ls -l /dev/serial/by-id/
-cd ~/small_car_f407
+cd ~/smart_car
 sudo ./robot_host/tools/recover_mcu_usb.sh
 ```
 
 ROS 构建目录由容器 root 创建而无法清理时：
 
 ```bash
-cd ~/small_car_f407
+cd ~/smart_car
 docker run --rm -v "$PWD/robot_host:/target" small-car-ros2:kilted \
   bash -lc 'rm -rf /target/build-ros /target/install-ros /target/log-ros'
 ```

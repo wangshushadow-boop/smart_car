@@ -34,7 +34,7 @@ Windows 一键刷新树莓派环境：
 树莓派查看状态：
 
 ```bash
-cd ~/small_car_f407/ros_middleware/docker
+cd ~/smart_car/ros_middleware/docker
 docker compose ps
 docker compose logs -f --tail=100
 ```
@@ -47,7 +47,7 @@ docker compose logs -f --tail=100
 - [ROS 接口](docs/interfaces.md)：topic、消息、坐标系和参数
 - [串口协议](docs/protocol.md)：完整帧格式、消息、参数和 OTA 子协议
 - [底盘标定](docs/calibration.md)：标定顺序和脚本
-- [固件升级](docs/firmware-update.md)：首次烧录和日常 OTA
+- [固件升级](../small_car_f407/docs/firmware-update.md)：首次烧录和日常 OTA
 - [导航操作](docs/navigation.md)：Nav2 启动、验证和当前限制
 
 文档只描述当前有效方案；历史迁移过程以 Git 记录为准。

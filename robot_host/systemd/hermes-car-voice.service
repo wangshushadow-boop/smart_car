@@ -15,7 +15,7 @@ Environment=CAR_VOICE_PLAYBACK_DEVICE=plughw:CARD=USB,DEV=0
 Environment=CAR_VOICE_STT_PROVIDER=sensevoice
 Environment=CAR_VOICE_SENSEVOICE_PYTHON=/home/ubuntu/.hermes/sensevoice-venv/bin/python
 Environment=CAR_VOICE_SENSEVOICE_SCRIPT=/home/ubuntu/.hermes/car_voice/sensevoice_transcribe.py
-Environment=CAR_VOICE_CAMERA_CAPTURE_BIN=/home/ubuntu/small_car_f407/robot_host/build-v4l2/v4l2_capture
+Environment=CAR_VOICE_CAMERA_CAPTURE_BIN=/home/ubuntu/smart_car/robot_host/build-v4l2/v4l2_capture
 Environment=CAR_VOICE_CAMERA_DEVICE=/dev/video0
 Environment=CAR_VOICE_CAMERA_WIDTH=1280
 Environment=CAR_VOICE_CAMERA_HEIGHT=720

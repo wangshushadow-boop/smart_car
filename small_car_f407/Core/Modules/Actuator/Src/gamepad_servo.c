@@ -95,7 +95,8 @@ void GamepadServo_TaskStep(void)
     return;
   }
 
-  const int16_t left_step_us = AxisToStep(state.rx);
+  /* 水平舵机的物理安装方向与右摇杆 X 轴相反。 */
+  const int16_t left_step_us = (int16_t)-AxisToStep(state.rx);
   const int16_t right_step_us = AxisToStep(state.ry);
   if ((left_step_us == 0) && (right_step_us == 0))
   {
