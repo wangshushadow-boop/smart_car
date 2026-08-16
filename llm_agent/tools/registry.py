@@ -42,6 +42,14 @@ class ToolRegistry:
         """按注册顺序返回工具名称，供 Prompt 和权限策略生成有效工具面。"""
         return list(self._tools)
 
+    def definitions(self) -> list[AgentTool]:
+        """返回只读语义的 Tool 定义快照，供 Skill 层生成原子能力视图。
+
+        Tool 实例仍只保存在本 Registry 中；调用方只能获得当前快照，不能通过
+        返回列表修改注册表。这样原子 Skill 无需复制 Tool 实现或重复注册执行器。
+        """
+        return list(self._tools.values())
+
     def catalog_prompt(self, names: list[str] | None = None) -> str:
         """为通用任务节点输出白名单工具及其参数 JSON Schema。"""
         lines: list[str] = []

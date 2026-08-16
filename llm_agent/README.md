@@ -263,6 +263,7 @@ Agent 对外只有 `/car/agent/run` 一个 ROS 2 Action，Goal、Feedback 和 Re
 [独立 Web Debug](../agent_debug_web/README.md)。
 
 当前 Agent Loop 支持闲聊、车辆状态查询、单步相对运动、组合运动 Skill、工具白名单校验和独立 TTS。
+所有车辆能力统一以 Skill 调用；原子 Tool 会自动映射为同名的单步骤 Skill，不需要重复注册或编写 YAML。
 `motion_sequence` 可以把 2～8 个明确运动步骤编排为任务序列；树莓派再次校验后通过 Nav2 串行执行。
 Agent Server 不直接发布速度或访问底盘，任意 ROS topic 发布也未开放。
 

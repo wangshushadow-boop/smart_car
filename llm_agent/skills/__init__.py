@@ -6,6 +6,7 @@
 
 from .loader import load_skill_directory
 from .registry import (
+    AtomicToolSkill,
     MotionSequenceSkill,
     RobotTask,
     RobotTaskLimits,
@@ -15,6 +16,7 @@ from .registry import (
 )
 
 __all__ = [
+    "AtomicToolSkill",
     "load_skill_directory",
     "MotionSequenceSkill",
     "RobotTask",

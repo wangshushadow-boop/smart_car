@@ -97,7 +97,7 @@ generation_model: minicpm
         self.assertEqual(config.modalities.input.video.models, ["minicpm"])
         self.assertEqual(
             required_local_models(config),
-            ["qwen3_asr", "minicpm", "piper"],
+            ["qwen3_asr", "piper"],
         )
 
     def test_models_are_loaded_from_separate_catalog(self) -> None:

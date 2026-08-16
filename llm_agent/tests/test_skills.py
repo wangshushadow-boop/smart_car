@@ -10,6 +10,8 @@ from llm_agent.skills import (
     SkillRegistry,
     load_skill_directory,
 )
+from llm_agent.tools.registry import ToolRegistry
+from llm_agent.tools.vehicle import GetRobotStatusTool
 
 
 class FakeToolRegistry:
@@ -75,10 +77,22 @@ class SkillRegistryTest(unittest.TestCase):
                 )
             )
 
-    def test_catalog_exposes_only_summary(self) -> None:
+    def test_catalog_exposes_skill_arguments_schema(self) -> None:
         catalog = self.registry.catalog_prompt()
         self.assertIn("motion_sequence", catalog)
-        self.assertNotIn("distance_m", catalog)
+        self.assertIn("distance_m", catalog)
+
+    def test_tool_is_automatically_exposed_as_single_step_skill(self) -> None:
+        tools = ToolRegistry()
+        tools.register(GetRobotStatusTool())
+        registry = SkillRegistry()
+
+        loaded = registry.register_atomic_tools(tools)
+        plan = registry.plan(SkillCall(name="get_robot_status", arguments={}))
+
+        self.assertEqual(loaded, 1)
+        self.assertTrue(registry.is_atomic("get_robot_status"))
+        self.assertEqual([call.name for call in plan.tool_calls], ["get_robot_status"])
 
     def test_directory_skill_is_discovered_and_rendered(self) -> None:
         with TemporaryDirectory() as directory:

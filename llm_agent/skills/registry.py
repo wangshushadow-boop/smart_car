@@ -39,6 +39,28 @@ class SkillPlan(BaseModel):
     tool_calls: list[ToolCall] = Field(min_length=1, max_length=8)
 
 
+class AtomicToolSkill:
+    """把已注册 Tool 投影为单步骤 Skill，不复制 Tool 实现。
+
+    Agent 只看到 Skill；真正的参数校验与执行仍由唯一的 ToolRegistry 完成。
+    因此新增 Tool 后可以自动获得同名原子 Skill，同时避免注册两套工具。
+    """
+
+    def __init__(self, tool) -> None:
+        self.name = tool.name
+        self.description = tool.description
+        self.arguments_model = tool.arguments_model
+        self.tool_name = tool.name
+
+    def plan(self, arguments: BaseModel) -> SkillPlan:
+        return SkillPlan(
+            name=self.name,
+            tool_calls=[
+                ToolCall(name=self.tool_name, arguments=arguments.model_dump())
+            ],
+        )
+
+
 class RobotTaskLimits(BaseModel):
     """动态机器人任务不可突破的 ReAct 执行预算。"""
 
@@ -130,6 +152,14 @@ class SkillRegistry:
             raise ValueError(f"skill already registered: {skill.name}")
         self._skills[skill.name] = skill
 
+    def register_atomic_tools(self, tool_registry) -> int:
+        """为所有 Tool 自动注册同名的单步骤 Skill 视图。"""
+        loaded = 0
+        for tool in tool_registry.definitions():
+            self.register(AtomicToolSkill(tool))
+            loaded += 1
+        return loaded
+
     def contains(self, name: str) -> bool:
         """白名单查询；Agent Loop 用此快速拦截非法 Skill。"""
         return name in self._skills
@@ -139,14 +169,22 @@ class SkillRegistry:
         skill = self._skills.get(name)
         return skill is not None and callable(getattr(skill, "create_task", None))
 
-    def catalog_prompt(self) -> str:
-        """只暴露简短目录，避免把所有 Skill 细节常驻模型上下文。"""
+    def is_atomic(self, name: str) -> bool:
+        """判断 Skill 是否为 ToolRegistry 自动生成的原子 Skill。"""
+        return isinstance(self._skills.get(name), AtomicToolSkill)
+
+    def catalog_prompt(self, names: list[str] | None = None) -> str:
+        """输出可调用 Skill 及参数 Schema，作为模型唯一能力目录。"""
         if not self._skills:
             return ""
-        lines = ["可用 Skill："]
+        lines: list[str] = []
+        selected = set(names) if names is not None else None
         for skill in self._skills.values():
-            lines.append(f"- {skill.name}: {skill.description}")
-        return "\n".join(lines)
+            if selected is not None and skill.name not in selected:
+                continue
+            schema = skill.arguments_model.model_json_schema()
+            lines.append(f"- {skill.name}: {skill.description}; 参数={schema}")
+        return "可用 Skill：\n" + "\n".join(lines) if lines else ""
 
     def snapshot_id(self) -> str:
         """返回当前 Skill 摘要快照哈希，供 Session 记录任务运行时能力面。"""

@@ -15,7 +15,7 @@
       领域契约 + Session 持久化
               ↓
           AgentLoop
-   Prompt → Model → Tool → Observation
+   Prompt → Model → Skill → Observation
         ↓                 ↓
   SkillRegistry       ToolPolicy
                           ↓
@@ -38,7 +38,7 @@ Agent Server 不采集设备、不发布 `/cmd_vel`、不直接访问 Nav2。麦
 | --- | --- |
 | `gateway/` | 请求幂等、同 Session 串行和 Runtime 生命周期 |
 | `runtime/agent_loop.py` | 模型—工具—观察循环、Runtime 生命周期与依赖装配 |
-| `runtime/prompt_builder.py` | 组装请求、历史、Skill、Tool 和观察上下文 |
+| `runtime/prompt_builder.py` | 组装请求、历史、Skill 和观察上下文 |
 | `sessions/` | SQLite 对话、任务和执行事件持久化 |
 | `skills/` | 固定计划 Skill、目录扫描和动态任务声明 |
 | `tools/policy.py` | 工具授权、时间、步骤及运动预算 |
@@ -57,7 +57,7 @@ Agent Server 不采集设备、不发布 `/cmd_vel`、不直接访问 Nav2。麦
 模型每轮只能返回三种结构之一：
 
 ```json
-{"type":"tool_call","tool_name":"capture_camera","arguments":{}}
+{"type":"skill_call","skill_name":"capture_camera","arguments":{}}
 ```
 
 ```json
@@ -68,17 +68,18 @@ Agent Server 不采集设备、不发布 `/cmd_vel`、不直接访问 Nav2。麦
 {"type":"final","status":"completed","answer":"已经找到水瓶。"}
 ```
 
-循环每次只执行一个原子 Tool。执行结果、错误和 Robot Gateway 返回的新图片
+循环每次只调用一个 Skill。原子 Skill 内部只执行一个 Tool；执行结果、错误和 Robot Gateway 返回的新图片
 写入轨迹，下一轮模型必须基于真实 Observation 再决定。动态 Skill 执行期间
 不能切换到另一个 Skill。
 
 ## Skill 与 Tool
 
 动态 Skill 位于 `skills/<name>/SKILL.yaml`。启动时扫描并校验名称、参数模板、
-工具白名单和任务预算；Prompt 只常驻 Skill 名称与摘要，选择后才生成完整
+工具白名单和任务预算；Prompt 展示当前允许 Skill 的名称与参数 Schema，选择后生成完整
 `RobotTask`。增加动态任务不需要 Python 文件或 Graph 节点。
 
-Tool 是强类型原子能力，只能在 `runtime/agent_loop.py` 注册一次。有效工具集合为：
+Tool 是强类型原子能力，只能在 `runtime/agent_loop.py` 注册一次。启动时会自动
+生成同名的单步骤 Skill 视图，不复制 Tool 实现。复杂 Skill 内的有效工具集合为：
 
 ```text
 全局 ToolRegistry ∩ Skill allowed_tools ∩ 请求 allow_tools ∩ ToolPolicy

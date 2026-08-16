@@ -1,6 +1,6 @@
 """统一 Agent Loop 的 Prompt 装配器。
 
-只负责把请求、会话、Skill 摘要、有效 Tool Schema、任务规则和执行轨迹
+只负责把请求、会话、Skill Schema、任务规则和执行轨迹
 拼成 Provider 无关的 ModelRequest；不调用模型，也不决定是否执行工具。
 """
 
@@ -11,7 +11,6 @@ from pathlib import Path
 from llm_agent.sessions import ConversationTurn, format_conversation_history
 from llm_agent.models.protocol import GenerationBackend, ModelRequest
 from llm_agent.skills import RobotTask, SkillRegistry
-from llm_agent.tools.registry import ToolRegistry
 
 
 class PromptBuilder:
@@ -21,12 +20,10 @@ class PromptBuilder:
         self,
         model: GenerationBackend,
         skills: SkillRegistry,
-        tools: ToolRegistry,
         prompt_directory: Path | None = None,
     ) -> None:
         self._model = model
         self._skills = skills
-        self._tools = tools
         directory = prompt_directory or Path(__file__).resolve().parents[1] / "prompts"
         self._system_prompt = self._read_prompt(directory / "system.txt")
         self._safety_prompt = self._read_prompt(directory / "safety.txt")
@@ -37,9 +34,10 @@ class PromptBuilder:
         *,
         user_text: str,
         history: list[ConversationTurn],
-        allowed_tools: list[str],
+        allowed_skills: list[str] | None,
         trace: list[dict],
         task: RobotTask | None,
+        completed_skill: str = "",
         audio_urls: list[str],
         image_urls: list[str],
         video_urls: list[str],
@@ -51,11 +49,15 @@ class PromptBuilder:
             sections.append(conversation)
         if user_text:
             sections.append(f"当前用户请求：{user_text}")
-        if task is None:
-            if allowed_tools:
-                catalog = self._skills.catalog_prompt()
-                if catalog:
-                    sections.append(catalog)
+        if completed_skill:
+            sections.append(
+                f"Skill {completed_skill} 已经成功执行。"
+                "本轮禁止继续调用任何 Skill，只能返回 final 总结执行结果。"
+            )
+        elif task is None:
+            catalog = self._skills.catalog_prompt(allowed_skills)
+            if catalog:
+                sections.append(catalog)
         else:
             sections.append(
                 "当前动态任务：\n"
@@ -64,8 +66,8 @@ class PromptBuilder:
                 f"最大步骤：{task.limits.max_steps}\n"
                 f"超时：{task.limits.timeout_seconds:g}秒"
             )
-        tool_catalog = self._tools.catalog_prompt(allowed_tools)
-        sections.append("本轮允许工具：\n" + (tool_catalog or "无"))
+            catalog = self._skills.catalog_prompt(allowed_skills)
+            sections.append("当前任务允许的原子 Skill：\n" + (catalog or "无"))
         if trace:
             # Tool 结果可能较大，只保留最近记录的尾部文本，避免撑爆模型上下文。
             trace_text = str(trace[-8:])[-8000:]

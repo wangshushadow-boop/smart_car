@@ -124,6 +124,7 @@ def make_loop(
     tools.register(SetCameraTiltTool(robot))
     tools.register(CaptureCameraTool(robot))
     skills = SkillRegistry()
+    skills.register_atomic_tools(tools)
     skills.register(MotionSequenceSkill())
     load_skill_directory(skills, tools)
     return AgentLoop(
@@ -132,7 +133,7 @@ def make_loop(
         tools=tools,
         skills=skills,
         policy=ToolPolicy(tools),
-        prompt_builder=PromptBuilder(model, skills, tools),
+        prompt_builder=PromptBuilder(model, skills),
         media=media,
         robot_tool_executor=robot,
     )
@@ -161,7 +162,7 @@ class AgentLoopRuntimeTest(unittest.TestCase):
     def test_single_loop_executes_tool_then_returns_final_answer(self) -> None:
         model = FakeModel(
             [
-                '{"type":"tool_call","tool_name":"move_relative",'
+                '{"type":"skill_call","skill_name":"move_relative",'
                 '"arguments":{"distance_m":0.2},"reason":"前进"}',
                 '{"type":"final","status":"completed",'
                 '"answer":"已经前进二十厘米。","reason":"动作完成"}',
@@ -180,12 +181,36 @@ class AgentLoopRuntimeTest(unittest.TestCase):
         self.assertEqual(len(robot.calls), 1)
         self.assertEqual(robot.calls[0][0], "move_relative")
 
+    def test_completed_atomic_skill_is_not_executed_twice(self) -> None:
+        """模型收尾时重复请求相同 Skill，也不能再次向 Robot Gateway 下发。"""
+        model = FakeModel(
+            [
+                '{"type":"skill_call","skill_name":"move_relative",'
+                '"arguments":{"distance_m":0.3},"reason":"前进"}',
+                '{"type":"skill_call","skill_name":"move_relative",'
+                '"arguments":{"distance_m":0.3},"reason":"重复请求"}',
+            ]
+        )
+        robot = FakeRobotExecutor()
+
+        state = make_loop(model, robot).invoke(
+            {
+                "request": make_request("前进三十厘米"),
+                "request_id": "loop-test",
+                "cancel_token": Event(),
+                "conversation_history": [],
+            }
+        )
+
+        self.assertEqual(len(robot.calls), 1)
+        self.assertEqual(state["answer"], "move_relative 已执行完成。")
+
     def test_directory_skill_uses_same_loop_and_new_observation(self) -> None:
         model = FakeModel(
             [
                 '{"type":"skill_call","skill_name":"find_object",'
                 '"arguments":{"target_name":"水瓶"},"reason":"开始搜索"}',
-                '{"type":"tool_call","tool_name":"capture_camera",'
+                '{"type":"skill_call","skill_name":"capture_camera",'
                 '"arguments":{},"reason":"先观察"}',
                 '{"type":"final","status":"completed",'
                 '"answer":"已经找到水瓶。","reason":"画面中确认"}',
@@ -209,7 +234,7 @@ class AgentLoopRuntimeTest(unittest.TestCase):
             [
                 '{"type":"skill_call","skill_name":"find_object",'
                 '"arguments":{"target_name":"水瓶"},"reason":"开始"}',
-                '{"type":"tool_call","tool_name":"get_robot_status",'
+                '{"type":"skill_call","skill_name":"get_robot_status",'
                 '"arguments":{},"reason":"越权"}',
             ]
         )
@@ -228,7 +253,7 @@ class AgentLoopRuntimeTest(unittest.TestCase):
     def test_rotation_without_direction_is_rejected_before_gateway(self) -> None:
         model = FakeModel(
             [
-                '{"type":"tool_call","tool_name":"rotate_relative",'
+                '{"type":"skill_call","skill_name":"rotate_relative",'
                 '"arguments":{"angle_deg":30},"reason":"方向不明确"}'
             ]
         )
@@ -247,7 +272,7 @@ class AgentLoopRuntimeTest(unittest.TestCase):
     def test_request_can_disable_all_tool_and_skill_calls(self) -> None:
         model = FakeModel(
             [
-                '{"type":"tool_call","tool_name":"move_relative",'
+                '{"type":"skill_call","skill_name":"move_relative",'
                 '"arguments":{"distance_m":0.2},"reason":"尝试执行"}'
             ]
         )
@@ -262,7 +287,7 @@ class AgentLoopRuntimeTest(unittest.TestCase):
                 "conversation_history": [],
             }
         )
-        self.assertIn("禁止调用工具", state["error"])
+        self.assertIn("禁止调用 Skill", state["error"])
         self.assertEqual(robot.calls, [])
 
     def test_planned_skill_executes_inside_the_same_loop(self) -> None:

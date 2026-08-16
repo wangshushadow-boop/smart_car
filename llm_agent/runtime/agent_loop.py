@@ -1,8 +1,8 @@
 """统一的模型—工具—观察 Agent Loop。
 
 聊天、单步动作、固定计划 Skill 和动态机器人 Skill 都进入同一循环；模型每轮
-只能选择一个 Tool、一个 Skill，
-或返回最终答案。参数、安全和预算分别委托给 Registry 与 ToolPolicy。
+只能选择一个 Skill 或返回最终答案。原子 Skill 在内部展开为唯一注册的 Tool，
+参数、安全和预算分别委托给 Registry 与 ToolPolicy。
 """
 
 from __future__ import annotations
@@ -327,8 +327,7 @@ class AgentDecision(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["tool_call", "skill_call", "final"]
-    tool_name: str | None = None
+    type: Literal["skill_call", "final"]
     skill_name: str | None = None
     arguments: dict = Field(default_factory=dict)
     status: Literal["completed", "failed"] | None = None
@@ -337,8 +336,6 @@ class AgentDecision(BaseModel):
 
     @model_validator(mode="after")
     def validate_shape(self) -> "AgentDecision":
-        if self.type == "tool_call" and not self.tool_name:
-            raise ValueError("tool_call 必须提供 tool_name")
         if self.type == "skill_call" and not self.skill_name:
             raise ValueError("skill_call 必须提供 skill_name")
         if self.type == "final" and (not self.status or not self.answer.strip()):
@@ -384,6 +381,7 @@ class AgentLoop:
         trace: list[dict] = []
         budget = ToolBudget.start()
         task = None
+        completed_skill = ""
         last_provider = ""
         legacy_commands: list[dict] = []
         context = ToolContext(
@@ -419,15 +417,23 @@ class AgentLoop:
                     min(15 + turn * 3, 78),
                     f"Agent 正在进行第 {turn} 轮决策",
                 )
-            allowed_tools = self._policy.allowed_tools(task) if request.allow_tools else []
+            if not request.allow_tools or completed_skill:
+                allowed_skills: list[str] | None = []
+            elif task is not None:
+                # 动态任务内部只能调用其白名单中的同名原子 Skill。
+                allowed_skills = self._policy.allowed_tools(task)
+            else:
+                # None 表示展示全部顶层 Skill；空列表表示本轮禁止调用。
+                allowed_skills = None
             try:
                 response = self._model.complete(
                     self._prompt_builder.build(
                         user_text=user_text,
                         history=history,
-                        allowed_tools=allowed_tools,
+                        allowed_skills=allowed_skills,
                         trace=trace,
                         task=task,
+                        completed_skill=completed_skill,
                         audio_urls=audio_urls,
                         image_urls=image_urls,
                         video_urls=video_urls,
@@ -447,27 +453,64 @@ class AgentLoop:
 
             if decision.type == "final":
                 answer = sanitize_spoken_answer(decision.answer)
+                if completed_skill and decision.status == "failed":
+                    # Tool/Skill 执行结果是任务状态的权威来源；模型在收尾阶段
+                    # 只能组织文案，不能把已成功的动作改判为失败。
+                    answer = f"{completed_skill} 已执行完成。"
                 state.update(
                     answer=answer or "抱歉，我暂时无法给出有效回答。",
                     generation_backend=last_provider,
                     execution_trace=trace,
                     skill_snapshot=self._skills.snapshot_id(),
                 )
-                if decision.status == "failed":
+                if decision.status == "failed" and not completed_skill:
                     state["error"] = decision.reason or "模型报告任务失败"
                 break
 
             if not request.allow_tools:
-                return self._failure(state, "本轮请求禁止调用工具")
+                return self._failure(state, "本轮请求禁止调用 Skill")
 
             if decision.type == "skill_call":
-                if task is not None:
-                    return self._failure(state, "动态任务执行中不能切换到另一个 Skill")
+                # 已完成的单步/固定计划 Skill 进入只读收尾阶段；即使模型再次
+                # 请求同一动作也绝不重复执行，直接使用确定性结果结束。
+                if completed_skill:
+                    state.update(
+                        answer=f"{completed_skill} 已执行完成。",
+                        generation_backend=last_provider,
+                        execution_trace=trace,
+                        skill_snapshot=self._skills.snapshot_id(),
+                    )
+                    break
                 skill_call = SkillCall(
                     name=decision.skill_name or "", arguments=decision.arguments
                 )
                 if not self._skills.contains(skill_call.name):
                     return self._failure(state, f"Skill 未注册：{skill_call.name}")
+                if task is not None:
+                    if not self._skills.is_atomic(skill_call.name):
+                        return self._failure(
+                            state, "动态任务执行中只能调用获授权的原子 Skill"
+                        )
+                    trace.append(
+                        {
+                            "kind": "skill",
+                            "name": skill_call.name,
+                            "mode": "atomic",
+                            "parent": task.name,
+                        }
+                    )
+                    error = self._execute_planned_skill(
+                        skill_call,
+                        context,
+                        trace,
+                        budget,
+                        legacy_commands,
+                        task=task,
+                    )
+                    if error:
+                        return self._failure(state, error, trace)
+                    self._collect_observations(request.request_id, image_urls)
+                    continue
                 if self._skills.is_reactive(skill_call.name):
                     try:
                         task = self._skills.create_task(skill_call)
@@ -477,39 +520,19 @@ class AgentLoop:
                         {"kind": "skill", "name": task.name, "goal": task.goal}
                     )
                     continue
+                trace.append(
+                    {"kind": "skill", "name": skill_call.name, "mode": "planned"}
+                )
                 error = self._execute_planned_skill(
                     skill_call, context, trace, budget, legacy_commands
                 )
                 if error:
-                    return self._failure(state, error)
+                    return self._failure(state, error, trace)
                 self._collect_observations(request.request_id, image_urls)
+                # 单步骤和固定计划 Skill 的全部 Tool 均成功即完成执行阶段；
+                # 下一轮仅允许 final，不再把任何动作能力暴露给模型。
+                completed_skill = skill_call.name
                 continue
-
-            call = ToolCall(
-                name=decision.tool_name or "", arguments=decision.arguments
-            )
-            policy_error = self._policy.validate(call, budget, task)
-            if policy_error:
-                return self._failure(state, f"工具策略拒绝：{policy_error}")
-            if progress:
-                progress("tool_running", min(25 + turn * 3, 82), f"正在执行 {call.name}")
-            result = self._tools.execute(call, context)
-            trace.append(
-                {
-                    "kind": "tool",
-                    "name": call.name,
-                    "arguments": call.arguments,
-                    "success": result.success,
-                    "data": result.data,
-                    "error": result.error,
-                }
-            )
-            if not result.success:
-                return self._failure(state, result.error or "工具执行失败", trace)
-            self._policy.consume(call, budget)
-            if result.data.get("schema") == MOTION_TASK_SCHEMA:
-                legacy_commands.append(result.data)
-            self._collect_observations(request.request_id, image_urls)
         else:
             return self._failure(state, "Agent 达到最大模型决策轮数", trace)
 
@@ -519,7 +542,7 @@ class AgentLoop:
                 if len(legacy_commands) == 1
                 else {
                     "schema": _MOTION_SEQUENCE_SCHEMA,
-                    "skill": task.name if task else "agent_loop",
+                    "skill": task.name if task else completed_skill or "agent_loop",
                     "steps": legacy_commands,
                 }
             )
@@ -533,6 +556,7 @@ class AgentLoop:
         trace: list[dict],
         budget: ToolBudget,
         legacy_commands: list[dict],
+        task=None,
     ) -> str | None:
         """执行确定性计划 Skill；每个原子 Tool 仍独立校验并按顺序执行。"""
         try:
@@ -540,7 +564,7 @@ class AgentLoop:
         except ValueError as error:
             return str(error)
         for tool_call in plan.tool_calls:
-            policy_error = self._policy.validate(tool_call, budget)
+            policy_error = self._policy.validate(tool_call, budget, task)
             if policy_error:
                 return f"Skill 工具策略拒绝：{policy_error}"
             result = self._tools.execute(tool_call, context)
@@ -661,6 +685,8 @@ def create_runtime(config, robot_tool_executor=None) -> tuple[AgentRuntime, str,
 
     skill_registry = SkillRegistry()
     if runtime_config.skills_enabled:
+        # Tool 只注册一次；SkillRegistry 自动创建同名的单步骤 Skill 视图。
+        skill_registry.register_atomic_tools(tool_registry)
         skill_registry.register(MotionSequenceSkill())
         if robot_tool_executor is not None:
             load_skill_directory(skill_registry, tool_registry)
@@ -671,7 +697,7 @@ def create_runtime(config, robot_tool_executor=None) -> tuple[AgentRuntime, str,
         tools=tool_registry,
         skills=skill_registry,
         policy=ToolPolicy(tool_registry),
-        prompt_builder=PromptBuilder(generation, skill_registry, tool_registry),
+        prompt_builder=PromptBuilder(generation, skill_registry),
         media=media,
         robot_tool_executor=robot_tool_executor,
         max_model_turns=runtime_config.agent_max_model_turns,
