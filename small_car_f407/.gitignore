@@ -76,6 +76,7 @@ Desktop.ini
 
 # Logs and temporary files
 .codex_tmp/
+env/win/tools/
 *.log
 *.tmp
 *.bak

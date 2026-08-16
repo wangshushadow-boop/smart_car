@@ -5,8 +5,13 @@ set(CMAKE_C_COMPILER_ID GNU)
 set(CMAKE_CXX_COMPILER_ID GNU)
 
 # Some default GCC settings
-# STM32Cube bundled GNU toolchain.
-set(TOOLCHAIN_PREFIX                "C:/Users/10822/AppData/Local/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin/arm-none-eabi-")
+# Repository-managed Windows GNU toolchain. Run env/win/activate.ps1 first.
+if(WIN32)
+    cmake_path(SET TOOLCHAIN_PREFIX NORMALIZE
+        "${CMAKE_CURRENT_LIST_DIR}/../env/win/tools/arm-gnu/bin/arm-none-eabi-")
+else()
+    set(TOOLCHAIN_PREFIX "arm-none-eabi-")
+endif()
 
 set(CMAKE_C_COMPILER                ${TOOLCHAIN_PREFIX}gcc.exe)
 set(CMAKE_ASM_COMPILER              ${CMAKE_C_COMPILER})

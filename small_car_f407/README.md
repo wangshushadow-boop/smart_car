@@ -13,7 +13,15 @@
 
 ## 构建
 
-请先安装 `arm-none-eabi-gcc`、CMake 3.22 或更高版本，以及 Ninja，然后执行：
+Windows 构建环境已保存在 `env/win/archives/`，其中的大文件通过 Git LFS 管理。
+首次克隆后先在当前 PowerShell 会话激活环境（脚本会自动解压工具）：
+
+```powershell
+git lfs pull
+. .\env\win\activate.ps1
+```
+
+然后执行原有的 CMake Preset 命令：
 
 ```powershell
 cmake --preset Debug
