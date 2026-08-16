@@ -12,14 +12,21 @@ arguments:
 goal: 找到{{ target_name }}并移动到它旁边
 
 instructions: |
-  优先转动相机搜索，搜索不到时再旋转车体。
-  只有画面明确出现目标才能报告完成。
+  严格按以下顺序搜索，不要重复已经执行过的方向：
+  1. 使用当前画面检查正前方。
+  2. set_camera_pan(-45) 向左扫描一次，根据动作返回的新画面判断目标。
+  3. set_camera_pan(45) 向右扫描一次，根据动作返回的新画面判断目标。
+  4. set_camera_pan(0) 将相机归中，此后不得再次转动相机云台。
+  5. 如果仍未找到，保持同一个方向，每次调用 rotate_relative 旋转车体 90 度；
+     每次旋转都会返回新画面，不要额外调用 capture_camera。累计最多旋转 360 度。
+  6. 车体累计旋转 360 度仍未看到目标时，立即返回 final，status=failed，
+     answer=当前视野没有找到{{ target_name }}，不得继续调用任何 Skill。
+  只有画面明确出现目标才能报告找到，禁止把疑似目标当作已经找到。
   靠近目标前必须确认目标仍在画面中，每次只执行一个动作。
 
 allowed_tools:
   - capture_camera
   - set_camera_pan
-  - set_camera_tilt
   - rotate_relative
   - move_relative
   - stop_motion
