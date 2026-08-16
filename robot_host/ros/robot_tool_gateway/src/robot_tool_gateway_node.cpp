@@ -322,8 +322,13 @@ class RobotToolGateway final : public rclcpp::Node {
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4U);
-  executor.add_node(std::make_shared<RobotToolGateway>());
+  // Executor 内部不负责延长临时节点对象的生命周期，必须由 main 持有强引用。
+  // 否则构造日志打印后节点立即析构，进程仍空转但 Action Server 会从 ROS 图消失。
+  auto node = std::make_shared<RobotToolGateway>();
+  executor.add_node(node);
   executor.spin();
+  executor.remove_node(node);
+  node.reset();
   rclcpp::shutdown();
   return 0;
 }

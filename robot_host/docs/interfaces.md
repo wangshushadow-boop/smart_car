@@ -28,6 +28,7 @@ Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 | Action | 类型 | 说明 |
 | --- | --- | --- |
 | `/car/agent/run` | `small_car_interfaces/action/RunAgent` | 统一文本、音频、图片、视频输入输出 |
+| `/car/agent/tool_execute` | `small_car_interfaces/action/ExecuteRobotTool` | Agent Server 调用树莓派安全工具网关 |
 
 `agent_client/car_agent_client` 在树莓派侧把 VAD 完成的 WAV 和最近 JPEG 组成 Goal，并处理返回的
 文字和 WAV。Web Debug 也只使用同一个 Action，因此调试代码不进入 Agent 或树莓派客户端。

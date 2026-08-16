@@ -16,8 +16,6 @@ def _load_interfaces() -> dict[str, str]:
     actions = contract.get("actions", {})
     values = {
         "agent_run": actions.get("agent_run", {}).get("name"),
-        "nav_drive_on_heading": actions.get("nav_drive_on_heading", {}).get("name"),
-        "nav_spin": actions.get("nav_spin", {}).get("name"),
         "camera_image_raw": topics.get("camera_image_raw", {}).get("name"),
         "camera_info": topics.get("camera_info", {}).get("name"),
         "camera_image_compressed": topics.get("camera_image_compressed", {}).get("name"),
@@ -72,8 +70,6 @@ def generate_launch_description() -> LaunchDescription:
                     config,
                     {
                         "agent_action": interfaces["agent_run"],
-                        "nav_drive_action": interfaces["nav_drive_on_heading"],
-                        "nav_spin_action": interfaces["nav_spin"],
                         "image_topic": interfaces["camera_image_compressed"],
                     },
                 ],

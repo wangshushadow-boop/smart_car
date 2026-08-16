@@ -10,13 +10,14 @@
 | 名称 | 类型 | 约定 |
 | --- | --- | --- |
 | `/car/agent/run` | `small_car_interfaces/action/RunAgent` | Web 和树莓派访问 Agent 的唯一全模态业务接口 |
+| `/car/agent/tool_execute` | `small_car_interfaces/action/ExecuteRobotTool` | Agent 请求树莓派执行受限原子工具的唯一接口 |
 | `/drive_on_heading` | `nav2_msgs/action/DriveOnHeading` | 树莓派执行受限的相对直线运动 |
 | `/spin` | `nav2_msgs/action/Spin` | 树莓派执行受限的原地旋转 |
 
 `/car/agent/run` 的 Goal 使用 `AgentRequest`，Feedback 使用 `AgentProgress`，Result 使用 `AgentResponse`。输入和输出均由
 `AgentContent[]` 表达文本、音频、图片、视频或 JSON。旧的 Agent 文本输入输出 topic 已删除。
-Agent 动作结果使用名为 `robot_task` 的 `small_car.motion.v1` JSON 内容块；它不是速度命令，必须由
-树莓派校验后才能转换为 Nav2 Action。
+Agent Server 在循环内通过 `/car/agent/tool_execute` 调用树莓派 Gateway；树莓派语音客户端只处理
+最终文字和 WAV，不再解析或二次执行 `robot_task`，避免同一运动被注册或执行两次。
 
 ## Topic
 

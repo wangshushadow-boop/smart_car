@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <chrono>
 #include <exception>
-#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -36,18 +35,6 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       declare_parameter<std::string>("image_topic", "");
   const std::string action_name =
       declare_parameter<std::string>("agent_action", "");
-  const std::string drive_action =
-      declare_parameter<std::string>("nav_drive_action", "");
-  const std::string spin_action =
-      declare_parameter<std::string>("nav_spin_action", "");
-  const double max_distance_m =
-      declare_parameter<double>("motion_max_distance_m", 2.0);
-  const double max_rotation_deg =
-      declare_parameter<double>("motion_max_rotation_deg", 180.0);
-  const double linear_speed_mps =
-      declare_parameter<double>("motion_linear_speed_mps", 0.2);
-  const double motion_timeout_seconds =
-      declare_parameter<double>("motion_timeout_seconds", 15.0);
   const double agent_request_timeout_seconds =
       declare_parameter<double>("agent_request_timeout_seconds", 120.0);
   if (agent_request_timeout_seconds <= 0.0) {
@@ -56,9 +43,9 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
   request_timeout_ = std::chrono::milliseconds(static_cast<std::int64_t>(
       agent_request_timeout_seconds * 1000.0));
   if (capture_config_.channels != 1 || image_topic.empty() ||
-      action_name.empty() || drive_action.empty() || spin_action.empty()) {
+      action_name.empty()) {
     throw std::invalid_argument(
-        "Agent Client 需要单声道音频以及有效的 Agent、图像和 Nav2 接口");
+        "Agent Client 需要单声道音频以及有效的 Agent 和图像接口");
   }
 
   const std::size_t bytes_per_frame = capture_config_.channels * 2U;
@@ -89,14 +76,6 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       [this](const std::string& request_id, const std::string& message) {
         HandleActionFailure(request_id, message);
       });
-  motion_parser_ = std::make_unique<MotionTaskParser>(
-      MotionLimits{max_distance_m, max_rotation_deg});
-  nav2_client_ = std::make_unique<Nav2MotionClient>(
-      this, drive_action, spin_action, linear_speed_mps, motion_timeout_seconds,
-      [this](const std::string& event) {
-        RCLCPP_INFO(get_logger(), "运动任务：%s", event.c_str());
-      });
-
   image_subscription_ = create_subscription<sensor_msgs::msg::CompressedImage>(
       image_topic, rclcpp::SensorDataQoS(),
       [this](sensor_msgs::msg::CompressedImage::UniquePtr message) {
@@ -113,7 +92,6 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
 AgentClientNode::~AgentClientNode() {
   stopping_.store(true);
   action_client_->Cancel();
-  nav2_client_->Stop();
   player_->Stop();
   if (capture_thread_.joinable()) {
     capture_thread_.join();
@@ -218,8 +196,7 @@ void AgentClientNode::HandleResponse(
     return;
   }
   std::vector<std::uint8_t> answer_audio;
-  std::optional<std::vector<MotionTask>> motion_tasks;
-  bool invalid_motion_task = false;
+  bool unexpected_robot_task = false;
   for (auto& output : response.outputs) {
     if (output.content_type == small_car_interfaces::msg::AgentContent::TEXT) {
       RCLCPP_INFO(get_logger(), "Agent：%s", output.text.c_str());
@@ -230,42 +207,17 @@ void AgentClientNode::HandleResponse(
     } else if (output.content_type ==
                    small_car_interfaces::msg::AgentContent::JSON &&
                output.name == "robot_task") {
-      std::string error;
-      auto parsed = motion_parser_->ParseMany(output.text, &error);
-      if (!parsed || motion_tasks) {
-        invalid_motion_task = true;
-        RCLCPP_ERROR(get_logger(), "Agent 运动任务已拒绝：%s",
-                     parsed ? "响应包含多个 robot_task" : error.c_str());
-      } else {
-        motion_tasks = *parsed;
-        for (std::size_t index = 0; index < parsed->size(); ++index) {
-          const auto& task = (*parsed)[index];
-          // 记录本地校验后的带符号数值，方便检查组合任务每一步。
-          const char* action_name =
-              task.action == MotionAction::kMoveRelative
-                  ? "move_relative"
-                  : (task.action == MotionAction::kRotateRelative
-                         ? "rotate_relative"
-                         : "stop_motion");
-          RCLCPP_INFO(get_logger(),
-                      "运动任务解析完成：step=%zu/%zu action=%s value=%.6f",
-                      index + 1U, parsed->size(), action_name, task.value);
-        }
-      }
+      // 生产运动必须已由 Agent Server 经 Robot Tool Gateway 执行；客户端绝不二次执行。
+      unexpected_robot_task = true;
+      RCLCPP_ERROR(get_logger(),
+                   "拒绝旧版 robot_task 输出：运动只能由 Robot Tool Gateway 执行");
     }
   }
   if (!response.error_message.empty()) {
     RCLCPP_WARN(get_logger(), "Agent 部分失败：%s",
                 response.error_message.c_str());
   }
-  // 运动时不播放确认语音，避免扬声器占用和车辆启动同时发生。
-  if (!invalid_motion_task && motion_tasks) {
-    if (motion_tasks->size() == 1U) {
-      nav2_client_->Execute(motion_tasks->front());
-    } else {
-      nav2_client_->ExecuteSequence(*motion_tasks);
-    }
-  } else if (!answer_audio.empty() && !invalid_motion_task) {
+  if (!answer_audio.empty() && !unexpected_robot_task) {
     player_->Play(std::move(answer_audio));
   }
   CompleteRequest(request_id);

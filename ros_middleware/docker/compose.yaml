@@ -6,6 +6,7 @@ services:
     image: small-car-ros2:kilted
     network_mode: host
     ipc: host
+    init: true
     devices:
       - /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C2C059301-if00:/dev/small_car_mcu
       - /dev/snd:/dev/snd
@@ -41,8 +42,13 @@ services:
       --cmake-clean-cache
       --symlink-install &&
       source robot_host/install-ros/setup.bash &&
-      { ros2 launch agent_client agent_client.launch.py &
-      exec ros2 launch small_car_nav2 system.launch.py; }"
+      exec ros2 launch small_car_nav2 system.launch.py"
+    healthcheck:
+      test: ["CMD", "bash", "/workspace/smart_car/robot_host/scripts/verify_ros_runtime.sh"]
+      interval: 10s
+      timeout: 20s
+      retries: 12
+      start_period: 45s
     logging:
       driver: local
       options:

@@ -15,8 +15,6 @@
 
 #include "agent_client/agent_action_client.hpp"
 #include "agent_client/camera_sampler.hpp"
-#include "agent_client/motion_task.hpp"
-#include "agent_client/nav2_motion_client.hpp"
 #include "agent_client/response_player.hpp"
 #include "agent_client/utterance_buffer.hpp"
 #include "agent_client/voice_activity_detector.hpp"
@@ -51,8 +49,6 @@ class AgentClientNode : public rclcpp::Node {
   CameraSampler camera_;
   std::unique_ptr<ResponsePlayer> player_;
   std::unique_ptr<AgentActionClient> action_client_;
-  std::unique_ptr<MotionTaskParser> motion_parser_;
-  std::unique_ptr<Nav2MotionClient> nav2_client_;
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr
       image_subscription_;
   rclcpp::TimerBase::SharedPtr request_timeout_timer_;

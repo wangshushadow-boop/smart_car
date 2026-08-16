@@ -43,15 +43,16 @@ Nav2 controller -> cmd_vel_nav -> velocity_smoother -> /cmd_vel -> small_car_bas
 
 ```text
 用户“向前一米”
-  -> Agent 白名单工具生成 small_car.motion.v1 JSON
-  -> agent_client 严格解析并再次限制距离/角度
+  -> Agent Server 白名单 Tool
+  -> /car/agent/tool_execute
+  -> robot_tool_gateway 严格校验距离/角度和并发状态
   -> /drive_on_heading 或 /spin
   -> Nav2 behavior_server + collision monitor
   -> /cmd_vel -> small_car_base -> MCU
 ```
 
-本地限制位于 `agent_client/config/agent_client.yaml`。模型不能指定速度、超时、关闭碰撞检查或直接发布
-`/cmd_vel`。运动未结束时拒绝新运动；“停止”会取消当前 Nav2 Goal。Web Debug 只显示任务预览，不控制实车。
+本地限制位于 `small_car_interfaces/config/robot_tools.yaml`，Gateway 还在代码中执行同等边界校验。
+模型不能指定速度、超时、关闭碰撞检查或直接发布 `/cmd_vel`。运动未结束时拒绝新运动；“停止”会取消当前 Nav2 Goal。
 
 实车测试前架空车轮，并先确认 `/odom`、`odom -> base_link`、前向超声和急停均正常。可绕过 Agent
 单独验证 Nav2：

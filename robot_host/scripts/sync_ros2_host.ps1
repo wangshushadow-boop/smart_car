@@ -52,7 +52,7 @@ try {
     "test -e /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C2C059301-if00",
     "test -e /dev/snd",
     "test -e /dev/video0",
-    "if [ -f '$remoteCompose' ]; then docker compose -f '$remoteCompose' down; fi",
+    "if [ -f '$remoteCompose' ]; then docker compose -f '$remoteCompose' down --remove-orphans --timeout 15; fi",
     "mkdir -p '$remoteRobotHost' '$remoteMiddleware'",
     "rm -rf '$remoteRobotHost/core' '$remoteRobotHost/ros' '$remoteRobotHost/docs' '$remoteRobotHost/scripts' '$remoteRobotHost/tools' '$remoteRobotHost/systemd'",
     "rm -rf '$remoteMiddleware/src' '$remoteMiddleware/config' '$remoteMiddleware/docker' '$remoteMiddleware/docs'",
@@ -62,10 +62,10 @@ try {
     "cmake -S '$remoteRobotHost' -B '$remoteRobotHost/build-host'",
     "cmake --build '$remoteRobotHost/build-host' -j4",
     "ctest --test-dir '$remoteRobotHost/build-host' --output-on-failure",
-    "chmod +x '$remoteRobotHost/tools/recover_mcu_usb.sh' '$remoteRobotHost/scripts/update_mcu_firmware.sh'",
+    "chmod +x '$remoteRobotHost/tools/recover_mcu_usb.sh' '$remoteRobotHost/scripts/update_mcu_firmware.sh' '$remoteRobotHost/scripts/verify_ros_runtime.sh'",
     "docker compose -f '$remoteCompose' up --build -d --force-recreate",
     "docker compose -f '$remoteCompose' ps",
-    "for attempt in {1..45}; do if docker compose -f '$remoteCompose' exec -T small_car_ros2 bash -lc 'test -f /workspace/smart_car/robot_host/install-ros/setup.bash && source /opt/ros/kilted/setup.bash && source /workspace/smart_car/robot_host/install-ros/setup.bash && timeout 10 ros2 node list | grep -Fx /small_car_base >/dev/null && timeout 10 ros2 node list | grep -Fx /car_agent_client >/dev/null && timeout 10 ros2 topic list | grep -Fx /car/camera/image/compressed >/dev/null && timeout 10 ros2 lifecycle get /controller_server | grep -q ^active && timeout 10 ros2 lifecycle get /behavior_server | grep -q ^active && timeout 10 ros2 lifecycle get /collision_monitor | grep -q ^active'; then echo 'ros_health=ok'; exit 0; fi; sleep 2; done; echo 'ROS health check failed' >&2; docker compose -f '$remoteCompose' logs --tail=200; exit 1"
+    "attempt=1; while [ `$attempt -le 60 ]; do if docker compose -f '$remoteCompose' exec -T small_car_ros2 bash /workspace/smart_car/robot_host/scripts/verify_ros_runtime.sh; then exit 0; fi; attempt=`$((attempt + 1)); sleep 2; done; echo 'ROS health check failed' >&2; docker compose -f '$remoteCompose' ps; docker compose -f '$remoteCompose' logs --tail=250; exit 1"
   )
   & ssh -p $SshPort $remoteTarget ($remoteSteps -join " && ")
   if ($LASTEXITCODE -ne 0) { throw "Host deployment failed" }

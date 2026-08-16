@@ -47,12 +47,12 @@ actions:
     name: /drive_on_heading
     type: nav2_msgs/action/DriveOnHeading
     server: nav2/behavior_server
-    clients: [robot_host/agent_client]
+    clients: [robot_host/robot_tool_gateway]
   nav_spin:
     name: /spin
     type: nav2_msgs/action/Spin
     server: nav2/behavior_server
-    clients: [robot_host/agent_client]
+    clients: [robot_host/robot_tool_gateway]
 
 topics:
   # Nav2 碰撞监控最终输出的底盘速度命令。

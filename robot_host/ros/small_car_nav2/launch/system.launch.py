@@ -42,6 +42,7 @@ def generate_launch_description():
     car_nav2_share = get_package_share_directory("small_car_nav2")
     base_share = get_package_share_directory("small_car_base")
     gateway_share = get_package_share_directory("robot_tool_gateway")
+    agent_client_share = get_package_share_directory("agent_client")
     params_file = LaunchConfiguration("params_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
     topics = _load_topics()
@@ -80,6 +81,11 @@ def generate_launch_description():
             os.path.join(gateway_share, "launch", "gateway.launch.py")
         )
     )
+    agent_client = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(agent_client_share, "launch", "agent_client.launch.py")
+        )
+    )
     navigation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(nav2_share, "launch", "navigation_launch.py")
@@ -113,6 +119,7 @@ def generate_launch_description():
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         base,
         robot_tool_gateway,
+        agent_client,
         nav2_container,
         navigation,
     ])

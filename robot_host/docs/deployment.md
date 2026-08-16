@@ -39,8 +39,9 @@ test -e /dev/video0
   -RemoteWorkspace /home/ubuntu/small_car_f407
 ```
 
-脚本会上传 `robot_host` 与 `ros_middleware`、编译并测试核心库、重建 ROS 工作区、启动容器，并检查
-`/small_car_base`、`/car_agent_client` 和 `/car/camera/image/compressed`。
+脚本会上传 `robot_host` 与 `ros_middleware`、编译并测试核心库、清理旧容器和 ROS 安装空间、
+以单实例启动容器，并检查节点无重名、`/car/agent/tool_execute` 恰好有一个 Server、Nav2 生命周期
+全部激活以及相机 Topic 可用。任一检查失败都会输出容器末尾日志并让部署失败。
 
 ## 手动启动
 
@@ -71,8 +72,16 @@ docker compose exec small_car_ros2 bash -lc '
   ros2 node info /car_agent_client
   ros2 topic hz /car/camera/image/compressed
   ros2 action info /car/agent/run
+  ros2 action info /car/agent/tool_execute
   ros2 topic echo /diagnostics --once
 '
+```
+
+也可以直接运行与一键部署相同的完整健康检查：
+
+```bash
+docker compose exec small_car_ros2 \
+  bash /workspace/smart_car/robot_host/scripts/verify_ros_runtime.sh
 ```
 
 低速运动测试前先架空车轮并准备断电：

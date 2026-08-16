@@ -7,12 +7,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(ament_cmake REQUIRED)
-find_package(nav2_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(small_car_interfaces REQUIRED)
-find_package(yaml-cpp REQUIRED)
 
 set(ROBOT_HOST_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ROBOT_HOST_BUILD_CORE OFF CACHE BOOL "" FORCE)
@@ -27,8 +25,6 @@ add_executable(agent_client_node
   src/agent_client_node.cpp
   src/agent_action_client.cpp
   src/camera_sampler.cpp
-  src/motion_task.cpp
-  src/nav2_motion_client.cpp
   src/response_player.cpp
   src/utterance_buffer.cpp
   src/voice_activity_detector.cpp
@@ -36,8 +32,6 @@ add_executable(agent_client_node
 target_include_directories(agent_client_node PRIVATE include)
 target_link_libraries(agent_client_node PRIVATE
   robot_host_audio
-  yaml-cpp
-  ${nav2_msgs_TARGETS}
   rclcpp::rclcpp
   rclcpp_action::rclcpp_action
   sensor_msgs::sensor_msgs_library
@@ -65,14 +59,6 @@ if(BUILD_TESTING)
   add_test(NAME agent_client_media_buffer_test
            COMMAND agent_client_media_buffer_test)
 
-  add_executable(agent_client_motion_task_test
-    tests/motion_task_test.cpp
-    src/motion_task.cpp
-  )
-  target_include_directories(agent_client_motion_task_test PRIVATE include)
-  target_link_libraries(agent_client_motion_task_test PRIVATE yaml-cpp)
-  add_test(NAME agent_client_motion_task_test
-           COMMAND agent_client_motion_task_test)
 endif()
 
 ament_package()
