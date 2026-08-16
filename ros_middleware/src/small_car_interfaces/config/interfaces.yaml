@@ -13,7 +13,7 @@
 #
 # 顶层字段：
 # - version：契约格式版本；解析器可据此拒绝不兼容的文件。
-# - topics：接口键到契约条目的映射。
+# - topics/services/actions：对应 ROS 接口键到契约条目的映射。
 #
 # 每个条目字段：
 # - name：ROS 根命名空间下的绝对 topic 名。
@@ -24,6 +24,15 @@
 # - rate_hz：预期发布频率；timeout_ms：消费者允许的最大命令新鲜度。
 
 version: 2
+
+services:
+  # Agent Server 合成最终语音后直接提交到树莓派后台播放器。
+  # 响应只确认播放器已接收，不等待整段音频播放完成。
+  audio_enqueue:
+    name: /car/audio/enqueue
+    type: small_car_interfaces/srv/PlayAudio
+    server: robot_host/agent_client
+    clients: [llm_agent/audio_output_client]
 
 actions:
   # Web、树莓派和其他调用方访问 Agent 的唯一全模态业务接口。

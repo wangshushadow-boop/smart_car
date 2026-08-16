@@ -14,8 +14,10 @@ def _load_interfaces() -> dict[str, str]:
         contract = yaml.safe_load(stream)
     topics = contract.get("topics", {})
     actions = contract.get("actions", {})
+    services = contract.get("services", {})
     values = {
         "agent_run": actions.get("agent_run", {}).get("name"),
+        "audio_enqueue": services.get("audio_enqueue", {}).get("name"),
         "camera_image_raw": topics.get("camera_image_raw", {}).get("name"),
         "camera_info": topics.get("camera_info", {}).get("name"),
         "camera_image_compressed": topics.get("camera_image_compressed", {}).get("name"),
@@ -70,6 +72,7 @@ def generate_launch_description() -> LaunchDescription:
                     config,
                     {
                         "agent_action": interfaces["agent_run"],
+                        "audio_service": interfaces["audio_enqueue"],
                         "image_topic": interfaces["camera_image_compressed"],
                     },
                 ],

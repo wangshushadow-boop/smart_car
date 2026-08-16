@@ -31,6 +31,8 @@ done
 timeout 10 ros2 interface show \
   small_car_interfaces/action/ExecuteRobotTool >/dev/null || \
   fail "ExecuteRobotTool 接口未安装"
+timeout 10 ros2 interface show small_car_interfaces/srv/PlayAudio >/dev/null || \
+  fail "PlayAudio 接口未安装"
 
 tool_action="$(timeout 10 ros2 action info /car/agent/tool_execute 2>/dev/null)" || \
   fail "无法读取 Robot Tool Action"
@@ -47,5 +49,11 @@ topics="$(timeout 10 ros2 topic list --no-daemon --spin-time 3 2>/dev/null)" || 
   fail "无法读取 ROS Topic 图"
 printf '%s\n' "${topics}" | grep -Fxq /car/camera/image/compressed || \
   fail "压缩相机 Topic 不可用"
+
+services="$(timeout 10 ros2 service list -t 2>/dev/null)" || \
+  fail "无法读取 ROS Service 图"
+printf '%s\n' "${services}" | \
+  grep -Fq '/car/audio/enqueue [small_car_interfaces/srv/PlayAudio]' || \
+  fail "音频入队 Service 不可用"
 
 echo "ros_health=ok"

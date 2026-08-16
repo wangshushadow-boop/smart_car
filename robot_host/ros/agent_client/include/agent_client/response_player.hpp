@@ -1,4 +1,4 @@
-/** @file response_player.hpp @brief 将 Action 返回的 WAV 直接交给 Core ALSA 播放。 */
+/** @file response_player.hpp @brief 将播放 Service 接收的 WAV 交给 Core ALSA。 */
 #pragma once
 
 #include <atomic>

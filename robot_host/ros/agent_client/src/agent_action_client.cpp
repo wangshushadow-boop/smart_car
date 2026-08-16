@@ -30,6 +30,8 @@ bool AgentActionClient::Send(std::string request_id, std::string session_id,
   goal.request.session_id = std::move(session_id);
   goal.request.source = "raspberry_pi";
   goal.request.created_at = node_->now();
+  // audio 只声明调用方希望播报；最终 WAV 由 Agent Server 通过
+  // /car/audio/enqueue 主动下发，Action 响应仍只承载文字和状态。
   goal.request.response_modalities = {"text", "audio"};
   goal.request.allow_tools = true;
   goal.request.stream_progress = true;

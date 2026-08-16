@@ -41,23 +41,28 @@ _ROS_TO_CONTENT = {
 _CONTENT_TO_ROS = {value: key for key, value in _ROS_TO_CONTENT.items()}
 
 
-def _load_action_name(key: str) -> str:
+def _load_interface_name(section: str, key: str) -> str:
     package_share = Path(get_package_share_directory("small_car_interfaces"))
     with (package_share / "config" / "interfaces.yaml").open(encoding="utf-8") as file:
         contract = yaml.safe_load(file)
-    actions = contract.get("actions", {}) if isinstance(contract, dict) else {}
-    name = actions.get(key, {}).get("name")
+    entries = contract.get(section, {}) if isinstance(contract, dict) else {}
+    name = entries.get(key, {}).get("name")
     if not isinstance(name, str) or not name.startswith("/"):
-        raise RuntimeError(f"统一 Agent Action 契约缺少 {key}")
+        raise RuntimeError(f"统一 Agent 接口契约缺少 {section}.{key}")
     return name
 
 
 def load_agent_action_name() -> str:
-    return _load_action_name("agent_run")
+    return _load_interface_name("actions", "agent_run")
 
 
 def load_robot_tool_action_name() -> str:
-    return _load_action_name("robot_tool_execute")
+    return _load_interface_name("actions", "robot_tool_execute")
+
+
+def load_audio_service_name() -> str:
+    """从统一接口契约读取树莓派音频入队 Service。"""
+    return _load_interface_name("services", "audio_enqueue")
 
 
 def request_from_ros(message, *, max_inline_bytes: int) -> RuntimeRequest:

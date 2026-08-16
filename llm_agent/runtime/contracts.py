@@ -32,7 +32,7 @@ class ContentPart(BaseModel):
     - 文本 / JSON 内容仅使用 `text` 字段，避免大字段拼接歧义。
     - 二进制模态至少需要 `data` / `uri` / `topic` 其一，方便内联或引用。
     - `name` / `mime_type` / `metadata` 用于在响应里区分输出块（如
-      `answer` / `robot_task` / `answer_audio`）。
+      `answer` / `robot_task`）。最终语音通过独立播放 Service 主动下发。
     """
 
     model_config = ConfigDict(extra="forbid")

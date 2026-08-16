@@ -35,18 +35,24 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       declare_parameter<std::string>("image_topic", "");
   const std::string action_name =
       declare_parameter<std::string>("agent_action", "");
+  const std::string audio_service_name =
+      declare_parameter<std::string>("audio_service", "");
+  const auto max_playback_bytes =
+      declare_parameter<int>("max_playback_bytes", 8 * 1024 * 1024);
   const double agent_request_timeout_seconds =
-      declare_parameter<double>("agent_request_timeout_seconds", 120.0);
+      declare_parameter<double>("agent_request_timeout_seconds", 360.0);
   if (agent_request_timeout_seconds <= 0.0) {
     throw std::invalid_argument("Agent 请求超时必须大于 0 秒");
   }
   request_timeout_ = std::chrono::milliseconds(static_cast<std::int64_t>(
       agent_request_timeout_seconds * 1000.0));
   if (capture_config_.channels != 1 || image_topic.empty() ||
-      action_name.empty()) {
+      action_name.empty() || audio_service_name.empty() ||
+      max_playback_bytes <= 0) {
     throw std::invalid_argument(
-        "Agent Client 需要单声道音频以及有效的 Agent 和图像接口");
+        "Agent Client 需要单声道音频以及有效的 Agent、图像和播放接口");
   }
+  max_playback_bytes_ = static_cast<std::size_t>(max_playback_bytes);
 
   const std::size_t bytes_per_frame = capture_config_.channels * 2U;
   const std::size_t period_bytes =
@@ -81,12 +87,20 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       [this](sensor_msgs::msg::CompressedImage::UniquePtr message) {
         camera_.Store(std::move(message));
       });
+  audio_service_ = create_service<small_car_interfaces::srv::PlayAudio>(
+      audio_service_name,
+      [this](
+          const std::shared_ptr<small_car_interfaces::srv::PlayAudio::Request>
+              request,
+          std::shared_ptr<small_car_interfaces::srv::PlayAudio::Response>
+              response) { HandlePlayAudio(request, std::move(response)); });
   request_timeout_timer_ = create_wall_timer(
       std::chrono::seconds(1),
       [this]() { CheckRequestTimeout(); });
   session_id_ = "pi-" + std::to_string(now().nanoseconds());
   capture_thread_ = std::thread(&AgentClientNode::CaptureLoop, this);
-  RCLCPP_INFO(get_logger(), "C++ Agent Client 已启动：%s", action_name.c_str());
+  RCLCPP_INFO(get_logger(), "C++ Agent Client 已启动：%s，音频服务：%s",
+              action_name.c_str(), audio_service_name.c_str());
 }
 
 AgentClientNode::~AgentClientNode() {
@@ -195,20 +209,13 @@ void AgentClientNode::HandleResponse(
                 request_id.c_str());
     return;
   }
-  std::vector<std::uint8_t> answer_audio;
-  bool unexpected_robot_task = false;
   for (auto& output : response.outputs) {
     if (output.content_type == small_car_interfaces::msg::AgentContent::TEXT) {
       RCLCPP_INFO(get_logger(), "Agent：%s", output.text.c_str());
     } else if (output.content_type ==
-                   small_car_interfaces::msg::AgentContent::AUDIO &&
-               !output.data.empty()) {
-      answer_audio = std::move(output.data);
-    } else if (output.content_type ==
                    small_car_interfaces::msg::AgentContent::JSON &&
                output.name == "robot_task") {
       // 生产运动必须已由 Agent Server 经 Robot Tool Gateway 执行；客户端绝不二次执行。
-      unexpected_robot_task = true;
       RCLCPP_ERROR(get_logger(),
                    "拒绝旧版 robot_task 输出：运动只能由 Robot Tool Gateway 执行");
     }
@@ -217,10 +224,48 @@ void AgentClientNode::HandleResponse(
     RCLCPP_WARN(get_logger(), "Agent 部分失败：%s",
                 response.error_message.c_str());
   }
-  if (!answer_audio.empty() && !unexpected_robot_task) {
-    player_->Play(std::move(answer_audio));
-  }
   CompleteRequest(request_id);
+}
+
+void AgentClientNode::HandlePlayAudio(
+    const std::shared_ptr<small_car_interfaces::srv::PlayAudio::Request> request,
+    std::shared_ptr<small_car_interfaces::srv::PlayAudio::Response> response) {
+  auto reject = [&response](std::string code, std::string message) {
+    response->accepted = false;
+    response->error_code = std::move(code);
+    response->message = std::move(message);
+  };
+  if (request->request_id.empty() || request->utterance_id.empty()) {
+    reject("invalid_id", "request_id 和 utterance_id 不能为空");
+    return;
+  }
+  if (request->mime_type != "audio/wav" || request->audio.empty()) {
+    reject("invalid_audio", "只接受非空的 audio/wav");
+    return;
+  }
+  if (request->audio.size() > max_playback_bytes_) {
+    reject("audio_too_large", "音频超过播放服务大小限制");
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(playback_mutex_);
+  if (request->utterance_id == last_utterance_id_) {
+    response->accepted = true;
+    response->message = "重复播报已忽略";
+    return;
+  }
+  if (player_->playing() && !request->interrupt_current) {
+    reject("player_busy", "播放器正忙");
+    return;
+  }
+  try {
+    player_->Play(std::move(request->audio));
+    last_utterance_id_ = request->utterance_id;
+    response->accepted = true;
+    response->message = "音频已交给后台播放器";
+  } catch (const std::exception& error) {
+    reject("enqueue_failed", error.what());
+  }
 }
 
 void AgentClientNode::HandleActionFailure(const std::string& request_id,

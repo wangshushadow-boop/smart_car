@@ -8,5 +8,6 @@ test -x "${root}/robot_host/install-ros/agent_client/lib/agent_client/agent_clie
 test -x "${root}/robot_host/install-ros/robot_tool_gateway/lib/robot_tool_gateway/robot_tool_gateway_node"
 ros2 interface show small_car_interfaces/action/RunAgent
 ros2 interface show small_car_interfaces/action/ExecuteRobotTool
+ros2 interface show small_car_interfaces/srv/PlayAudio
 ros2 launch agent_client agent_client.launch.py --show-args
 ros2 launch small_car_nav2 system.launch.py --show-args

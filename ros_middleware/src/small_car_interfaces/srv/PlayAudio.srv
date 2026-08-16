@@ -1,0 +1,15 @@
+# Agent 请求与播报的稳定关联标识。
+string request_id
+string utterance_id
+
+# 当前只接受 audio/wav；音频在服务返回后由树莓派后台播放。
+string mime_type
+uint8[] audio
+
+# true 表示中断当前播报；false 表示播放器忙时拒绝新音频。
+bool interrupt_current
+---
+# accepted 只表示已经交给后台播放器，不表示整段音频播放完毕。
+bool accepted
+string error_code
+string message

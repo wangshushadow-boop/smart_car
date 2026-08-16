@@ -30,8 +30,15 @@ Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 | `/car/agent/run` | `small_car_interfaces/action/RunAgent` | 统一文本、音频、图片、视频输入输出 |
 | `/car/agent/tool_execute` | `small_car_interfaces/action/ExecuteRobotTool` | Agent Server 调用树莓派安全工具网关 |
 
+## Agent Service
+
+| Service | 类型 | 说明 |
+| --- | --- | --- |
+| `/car/audio/enqueue` | `small_car_interfaces/srv/PlayAudio` | Agent Server 提交最终 WAV；树莓派确认接收后后台播放，不等待播放结束 |
+
 `agent_client/car_agent_client` 在树莓派侧把 VAD 完成的 WAV 和最近 JPEG 组成 Goal，并处理返回的
-文字和 WAV。Web Debug 也只使用同一个 Action，因此调试代码不进入 Agent 或树莓派客户端。
+文字与状态。最终播报由独立 Service 主动下发；Web Debug 仍只使用统一 Action，因此调试代码不进入
+Agent 或树莓派客户端。
 
 ## 树莓派音频数据路径
 
@@ -40,7 +47,8 @@ Agent 都直接读取该文件，不在实现中硬编码跨模块 topic 名。
 - 空闲时只维护固定容量的预录环形缓冲；
 - VAD 触发后直接写入 `agent_client` 自己预分配的 WAV 缓冲；
 - 提交 Goal 时移动缓冲所有权，不在业务层复制整段语音；
-- Action 返回的 WAV 直接交给 ALSA 播放，不再发布中间音频 Topic。
+- Agent Server 通过 `/car/audio/enqueue` Service 主动提交最终 WAV；Service
+  确认播放器接收后立即返回，由 Agent Client 的后台线程直接交给 ALSA。
 
 相机仍以 `sensor_msgs/msg/CompressedImage` 接入，客户端保存最新消息的所有权，并在组装 Goal 时移动 JPEG
 字节。DDS 序列化/反序列化和跨机器网络传输产生的边界复制不可避免，但树莓派业务进程内不重复复制大媒体。

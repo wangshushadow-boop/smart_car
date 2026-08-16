@@ -70,6 +70,14 @@ class FakeSpeech:
         )
 
 
+class FakeAudioOutput:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def enqueue(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+
+
 class FakeAsr:
     provider_name = "fake-asr"
 
@@ -113,7 +121,11 @@ class FakeRobotExecutor:
 
 
 def make_loop(
-    model: FakeModel, robot: FakeRobotExecutor, media=None, speech=None
+    model: FakeModel,
+    robot: FakeRobotExecutor,
+    media=None,
+    speech=None,
+    audio_output=None,
 ) -> AgentLoop:
     tools = ToolRegistry()
     tools.register(GetRobotStatusTool())
@@ -136,6 +148,7 @@ def make_loop(
         prompt_builder=PromptBuilder(model, skills),
         media=media,
         robot_tool_executor=robot,
+        audio_output=audio_output or FakeAudioOutput(),
     )
 
 
@@ -445,7 +458,13 @@ class AgentLoopRuntimeTest(unittest.TestCase):
             ['{"type":"final","status":"completed","answer":"一二三四五六","reason":"完成"}']
         )
         speech = FakeSpeech(auto="always", max_chars=4)
-        make_loop(model, FakeRobotExecutor(), speech=speech).invoke(
+        audio_output = FakeAudioOutput()
+        make_loop(
+            model,
+            FakeRobotExecutor(),
+            speech=speech,
+            audio_output=audio_output,
+        ).invoke(
             {
                 "request": make_request("请回答"),
                 "cancel_token": Event(),
@@ -453,6 +472,8 @@ class AgentLoopRuntimeTest(unittest.TestCase):
             }
         )
         self.assertEqual(speech.requests[0].text, "一二三四")
+        self.assertEqual(audio_output.calls[0]["audio"], b"RIFF-test")
+        self.assertEqual(audio_output.calls[0]["request_id"], "loop-test")
 
     def test_speech_inbound_only_synthesizes_for_audio_input(self) -> None:
         model = FakeModel(

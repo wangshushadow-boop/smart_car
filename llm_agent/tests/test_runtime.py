@@ -21,7 +21,6 @@ class RecordingGraph:
         return {
             **input,
             "answer": "好的",
-            "answer_wav": b"RIFF-test",
             "generation_backend": "fake-model",
             "speech_backend": "fake-tts",
             "command": {
@@ -55,7 +54,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(response.request_id, request.request_id)
         self.assertEqual(
             [part.type for part in response.outputs],
-            [ContentType.TEXT, ContentType.JSON, ContentType.AUDIO],
+            [ContentType.TEXT, ContentType.JSON],
         )
         self.assertEqual(response.outputs[1].name, "robot_task")
         self.assertIn('"distance_m":1.0', response.outputs[1].text)

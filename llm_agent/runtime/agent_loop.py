@@ -263,13 +263,6 @@ class AgentRuntime:
                 mime_type="application/json",
                 text=json.dumps(state["command"], ensure_ascii=False, separators=(",", ":")),
             ))
-        if state.get("answer_wav"):
-            outputs.append(ContentPart(
-                type=ContentType.AUDIO,
-                name="answer_audio",
-                mime_type="audio/wav",
-                data=state["answer_wav"],
-            ))
         report("completed", 100, "Agent 请求处理完成")
         return RuntimeResponse(
             request_id=request.request_id,
@@ -357,6 +350,7 @@ class AgentLoop:
         prompt_builder: PromptBuilder,
         media=None,
         robot_tool_executor=None,
+        audio_output=None,
         max_model_turns: int = 20,
     ) -> None:
         self._model = model
@@ -367,6 +361,7 @@ class AgentLoop:
         self._policy = policy
         self._prompt_builder = prompt_builder
         self._robot_tool_executor = robot_tool_executor
+        self._audio_output = audio_output
         self._max_model_turns = max_model_turns
 
     def invoke(self, input: dict) -> dict:
@@ -546,7 +541,7 @@ class AgentLoop:
                     "steps": legacy_commands,
                 }
             )
-        self._synthesize_speech(request, state, progress)
+        self._synthesize_speech(request, state, progress, cancelled)
         return state
 
     def _execute_planned_skill(
@@ -595,8 +590,10 @@ class AgentLoop:
         if len(image_urls) > 4:
             del image_urls[:-4]
 
-    def _synthesize_speech(self, request, state: dict, progress) -> None:
+    def _synthesize_speech(self, request, state: dict, progress, cancelled) -> None:
         """按输出策略朗读最终回答；TTS 失败时始终保留文字结果。"""
+        if cancelled.is_set():
+            return
         if not getattr(self._speech, "enabled", True):
             return
         explicitly_requested = ContentType.AUDIO in request.response_modalities
@@ -620,7 +617,13 @@ class AgentLoop:
             progress("synthesizing", 88, "正在生成语音输出")
         try:
             speech = self._speech.synthesize(SpeechRequest(text=answer))
-            state["answer_wav"] = speech.audio_wav
+            if self._audio_output is None:
+                raise RuntimeError("未配置树莓派音频输出服务")
+            self._audio_output.enqueue(
+                request_id=request.request_id,
+                audio=speech.audio_wav,
+                mime_type="audio/wav",
+            )
             state["speech_backend"] = speech.provider
         except Exception as error:
             failure = f"语音合成失败：{error}"
@@ -639,7 +642,9 @@ class AgentLoop:
         }
 
 
-def create_runtime(config, robot_tool_executor=None) -> tuple[AgentRuntime, str, str]:
+def create_runtime(
+    config, robot_tool_executor=None, audio_output=None
+) -> tuple[AgentRuntime, str, str]:
     """根据配置装配唯一 Agent Runtime 及其 Provider、Skill 和 Tool。"""
     from llm_agent.sessions import InMemoryConversationStore
     from llm_agent.models.registry import check_required_model_services, select_backends
@@ -700,6 +705,7 @@ def create_runtime(config, robot_tool_executor=None) -> tuple[AgentRuntime, str,
         prompt_builder=PromptBuilder(generation, skill_registry),
         media=media,
         robot_tool_executor=robot_tool_executor,
+        audio_output=audio_output,
         max_model_turns=runtime_config.agent_max_model_turns,
     )
     runtime = AgentRuntime(loop, conversation_store=conversation_store)

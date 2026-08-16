@@ -23,9 +23,11 @@ from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 
 from llm_agent.gateway import AgentGateway
 from llm_agent.runtime.agent_loop import create_runtime
+from llm_agent.transport.ros.audio_output_client import RosAudioOutputClient
 from llm_agent.transport.ros.run_agent_server import (
     AgentActionServer,
     load_agent_action_name,
+    load_audio_service_name,
     load_robot_tool_action_name,
 )
 from llm_agent.transport.ros.robot_tool_client import RosRobotToolClient
@@ -85,8 +87,11 @@ def main() -> None:
             config = load_agent_config()
             # 生产环境的运动 Tool 通过独立 ROS 客户端访问树莓派安全 Gateway。
             robot_tool_client = RosRobotToolClient(load_robot_tool_action_name())
+            audio_output_client = RosAudioOutputClient(load_audio_service_name())
             runtime, generation_name, speech_name = create_runtime(
-                config, robot_tool_executor=robot_tool_client
+                config,
+                robot_tool_executor=robot_tool_client,
+                audio_output=audio_output_client,
             )
             gateway = AgentGateway(runtime)
             node = AgentActionServer(
@@ -102,6 +107,7 @@ def main() -> None:
             executor = MultiThreadedExecutor(num_threads=4)
             executor.add_node(node)
             executor.add_node(robot_tool_client)
+            executor.add_node(audio_output_client)
             try:
                 executor.spin()
             except (KeyboardInterrupt, ExternalShutdownException):
@@ -113,6 +119,7 @@ def main() -> None:
                 executor.shutdown()
                 node.destroy_node()
                 robot_tool_client.destroy_node()
+                audio_output_client.destroy_node()
                 if rclpy.ok():
                     rclpy.shutdown()
     except RuntimeError as error:
