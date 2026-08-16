@@ -12,6 +12,7 @@ from .motion import (
     StopMotionTool,
 )
 from .status import GetRobotStatusTool, RobotStatus, RobotStatusProvider
+from .perception import CaptureCameraTool, SetCameraPanTool, SetCameraTiltTool
 
 __all__ = [
     "MOTION_TASK_SCHEMA",
@@ -21,4 +22,7 @@ __all__ = [
     "RobotStatusProvider",
     "RotateRelativeTool",
     "StopMotionTool",
+    "CaptureCameraTool",
+    "SetCameraPanTool",
+    "SetCameraTiltTool",
 ]

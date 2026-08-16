@@ -1,0 +1,18 @@
+# Agent Server 请求树莓派执行一个严格白名单内的原子工具。
+string task_id
+uint32 step_id
+string tool_name
+string arguments_json
+bool request_observation
+---
+# 工具真实执行结果；失败时 error_code 和 message 必须说明原因。
+bool success
+string error_code
+string message
+string result_json
+small_car_interfaces/AgentContent[] observations
+---
+# 执行阶段反馈，用于透传到底层 RunAgent Action。
+string stage
+uint8 percent
+string message

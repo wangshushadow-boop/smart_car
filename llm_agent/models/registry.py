@@ -2,46 +2,100 @@
 
 `ProviderRegistry` 是 Provider 工厂的字典视图；`select_backends` 把
 `AgentConfig` 翻译成实际可用的 `GenerationBackend` / `SpeechBackend`。
-
-`auto` 模式下：优先尝试 `preferred`，失败时回退到 `fallback`；两者通过
-`FallbackSpeech` 包装，保证整轮请求不会因为 TTS 失败而中断。
+输入理解和语音输出都使用同一种有序模型链：前一个后端失败后尝试下一个。
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from time import monotonic
+from typing import Any
 from urllib.request import urlopen
 
-from .capabilities import SpeechCapabilities
-from .minicpm import MiniCpmGeneration
-from .minimax import MiniMaxGeneration, MiniMaxSpeech
-from .piper import PiperSpeech
-from .protocol import AsrBackend, GenerationBackend, SpeechBackend
-from .qwen3_asr import Qwen3Asr
-from .types import SpeechRequest, SpeechResponse
+from .protocol import (
+    AsrBackend,
+    GenerationBackend,
+    SpeechBackend,
+    SpeechCapabilities,
+    SpeechRequest,
+    SpeechResponse,
+)
+from .providers.minicpm import MiniCpmGeneration
+from .providers.minimax import MiniMaxGeneration, MiniMaxSpeech
+from .providers.piper import PiperSpeech
+from .providers.qwen3_asr import Qwen3Asr
 
 GenerationFactory = Callable[[dict], GenerationBackend]
 SpeechFactory = Callable[[dict], SpeechBackend]
 AsrFactory = Callable[[dict], AsrBackend]
 
 
-class FallbackSpeech:
-    """语音选择策略：主后端失败时调用配置的备后端。"""
+@dataclass(frozen=True)
+class MediaRoute:
+    """一种媒体的有序 Provider 链与输入限制。"""
+
+    enabled: bool
+    max_bytes: int
+    max_chars: int
+    prompt: str
+    backends: tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class MediaBackends:
+    """主模型原生输入能力和非原生媒体理解链。"""
+
+    primary_inputs: frozenset[str]
+    audio: MediaRoute
+    image: MediaRoute
+    video: MediaRoute
+
+
+class SpeechRoute:
+    """语音输出策略与有序后端链。"""
 
     capabilities = SpeechCapabilities(
         wav_output=True, streaming=False, configurable_voice=True
     )
 
-    def __init__(self, primary: SpeechBackend, fallback: SpeechBackend) -> None:
-        self._primary = primary
-        self._fallback = fallback
-        self.provider_name = f"auto:{primary.provider_name}->{fallback.provider_name}"
+    def __init__(
+        self,
+        *,
+        enabled: bool,
+        auto: str,
+        mode: str,
+        min_chars: int,
+        max_chars: int,
+        timeout_seconds: float,
+        backends: tuple[SpeechBackend, ...],
+    ) -> None:
+        self.enabled = enabled
+        self.auto = auto
+        self.mode = mode
+        self.min_chars = min_chars
+        self.max_chars = max_chars
+        self.timeout_seconds = timeout_seconds
+        self.backends = backends
+        names = [backend.provider_name for backend in backends]
+        self.provider_name = (
+            names[0]
+            if len(names) == 1
+            else ("route:" + "->".join(names) if names else "disabled")
+        )
 
     def synthesize(self, request: SpeechRequest) -> SpeechResponse:
-        try:
-            return self._primary.synthesize(request)
-        except Exception:
-            return self._fallback.synthesize(request)
+        started_at = monotonic()
+        errors: list[str] = []
+        for backend in self.backends:
+            if monotonic() - started_at >= self.timeout_seconds:
+                errors.append(f"总超时 {self.timeout_seconds:g}s")
+                break
+            try:
+                return backend.synthesize(request)
+            except Exception as error:
+                errors.append(f"{backend.provider_name}: {error}")
+        raise RuntimeError("语音模型均不可用：" + "; ".join(errors))
 
 
 class ProviderRegistry:
@@ -115,9 +169,8 @@ def _model(config, name: str, role: str):
 def required_local_models(config) -> list[str]:
     """解析当前 Agent 配置实际依赖的本地模型服务。
 
-    这里仅做配置计算，不创建 Provider。auto ASR 根据生成模型声明的
-    ``capabilities.audio_input`` 决定；speech auto 始终检查本地 fallback，
-    同时检查本地 preferred。返回结果去重且保持调用顺序。
+    这里仅做配置计算，不创建 Provider。主模型不原生支持的媒体会把配置的
+    理解模型加入依赖；启用音频输出时检查整个有序语音模型链。
     """
     required: list[str] = []
 
@@ -127,32 +180,26 @@ def required_local_models(config) -> list[str]:
             if name not in required:
                 required.append(name)
 
-    generation_name = config.generation_model.provider
+    generation_name = config.generation_model
     generation_model = _model(config, generation_name, "generation_model")
     add_if_local(generation_name)
 
-    asr_name = config.asr.provider
-    if asr_name == "auto":
-        capabilities = generation_model.settings().get("capabilities", {})
-        asr_name = "none" if capabilities.get("audio_input", False) else config.asr.fallback
-    if asr_name != "none":
-        _model(config, asr_name, "asr")
-        add_if_local(asr_name)
+    for modality in ("audio", "image", "video"):
+        selection = getattr(config.modalities.input, modality)
+        if not selection.enabled or modality in generation_model.input:
+            continue
+        role = "asr" if modality == "audio" else "generation_model"
+        for name in selection.models:
+            media_model = _model(config, name, role)
+            if modality not in media_model.input:
+                raise ValueError(f"model {name} does not accept {modality} input")
+            add_if_local(name)
 
-    speech_name = config.speech.provider
-    if speech_name == "auto":
-        preferred = config.speech.preferred
-        if preferred in {"native", "same_provider"}:
-            preferred = generation_name
-        if preferred in config.models:
-            add_if_local(preferred)
-        _model(config, config.speech.fallback, "speech")
-        add_if_local(config.speech.fallback)
-    else:
-        if speech_name in {"native", "same_provider"}:
-            speech_name = generation_name
-        _model(config, speech_name, "speech")
-        add_if_local(speech_name)
+    speech = config.modalities.output.audio
+    if speech.enabled:
+        for name in speech.models:
+            _model(config, name, "speech")
+            add_if_local(name)
     return required
 
 
@@ -187,60 +234,67 @@ def check_required_model_services(config, opener=urlopen) -> list[str]:
 def select_backends(config, registry: ProviderRegistry | None = None):
     """按 `AgentConfig` 选择推理与语音后端。
 
-    返回 `(generation, asr, speech)`。ASR auto 按 generation 的音频能力
-    决定是否启用；speech auto 用 `FallbackSpeech` 包装主备后端。
+    返回 `(generation, media, speech)`。输入理解与语音输出均根据配置建立
+    有序后端链，模型参数只从 `models.yaml` 读取。
     """
     registry = registry or create_default_registry()
-    generation_name = config.generation_model.provider
+    generation_name = config.generation_model
     generation_model = _model(config, generation_name, "generation_model")
     generation = registry.create_generation(
         generation_model.backend, generation_model.settings()
     )
 
-    asr_selection = config.asr.provider
-    if asr_selection == "auto":
-        asr_selection = (
-            "none" if generation.capabilities.audio_input else config.asr.fallback
+    def media_route(modality: str) -> MediaRoute:
+        selection = getattr(config.modalities.input, modality)
+        backends: list[Any] = []
+        role = "asr" if modality == "audio" else "generation_model"
+        for name in selection.models:
+            model = _model(config, name, role)
+            if modality not in model.input:
+                raise ValueError(f"model {name} does not accept {modality} input")
+            if name == generation_name:
+                backend = generation
+            elif modality == "audio":
+                backend = registry.create_asr(model.backend, model.settings())
+            else:
+                backend = registry.create_generation(model.backend, model.settings())
+            backends.append(backend)
+        return MediaRoute(
+            enabled=selection.enabled,
+            max_bytes=selection.max_bytes,
+            max_chars=selection.max_chars,
+            prompt=selection.prompt,
+            backends=tuple(backends),
         )
-    if asr_selection == "none":
-        asr = None
-    else:
-        asr_model = _model(config, asr_selection, "asr")
-        asr = registry.create_asr(asr_model.backend, asr_model.settings())
 
-    selection = config.speech.provider
-    if selection in {"native", "same_provider"}:
-        # native / same_provider 表示"复用推理 Provider 自己的语音能力"。
-        selection = generation_name
-    if selection != "auto":
-        # 显式 Provider：不静默回退，配置错误直接报错。
-        speech_model = _model(config, selection, "speech")
-        speech = registry.create_speech(speech_model.backend, speech_model.settings())
-        return generation, asr, speech
-
-    # auto 模式：先按 preferred 试，失败或不可用时回退到 fallback。
-    preferred = config.speech.preferred
-    if preferred in {"native", "same_provider"}:
-        preferred = generation_name
-    fallback_name = config.speech.fallback
-    fallback_model = _model(config, fallback_name, "speech")
-    fallback = registry.create_speech(
-        fallback_model.backend, fallback_model.settings()
+    media = MediaBackends(
+        primary_inputs=frozenset(generation_model.input),
+        audio=media_route("audio"),
+        image=media_route("image"),
+        video=media_route("video"),
     )
-    preferred_model = config.models.get(preferred)
-    if (
-        preferred_model is None
-        or "speech" not in preferred_model.roles
-        or not registry.has_speech(preferred_model.backend)
-        or preferred == fallback_name
-    ):
-        return generation, asr, fallback
-    try:
-        primary = registry.create_speech(
-            preferred_model.backend, preferred_model.settings()
-        )
-    except Exception:
-        # Auto mode remains available when an optional cloud provider has no
-        # key, or a local native-speech dependency is unavailable at startup.
-        return generation, asr, fallback
-    return generation, asr, FallbackSpeech(primary, fallback)
+
+    output = config.modalities.output.audio
+    speech_backends: list[SpeechBackend] = []
+    if output.enabled:
+        for name in output.models:
+            model = _model(config, name, "speech")
+            try:
+                speech_backends.append(
+                    registry.create_speech(model.backend, model.settings())
+                )
+            except Exception:
+                # 可选云模型缺少密钥时保留后续本地模型；至少一个后端可用即可启动。
+                continue
+        if not speech_backends:
+            raise ValueError("音频输出已启用，但没有可创建的 speech 模型")
+    speech = SpeechRoute(
+        enabled=output.enabled,
+        auto=output.auto,
+        mode=output.mode,
+        min_chars=output.min_chars,
+        max_chars=output.max_chars,
+        timeout_seconds=output.timeout_seconds,
+        backends=tuple(speech_backends),
+    )
+    return generation, media, speech

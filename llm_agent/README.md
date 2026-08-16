@@ -134,23 +134,25 @@ API Key: EMPTY
 Agent 通过 `127.0.0.1` 访问服务，但启动脚本当前使用 `0.0.0.0:8099` 监听且未启用 API 鉴权。
 只应在受信任网络使用，并通过 Windows/WSL 防火墙限制 8099 端口，不要暴露到公网。
 
-生成、ASR 和语音后端在 `config/agent.yaml` 中独立选择：
+生成模型、媒体路由和语音输出策略在 `config/agent.yaml` 中配置：
 
 ```yaml
-generation_model:
-  provider: minicpm       # minicpm | minimax
+generation_model: minicpm       # minicpm | minimax
 
-asr:
-  provider: auto          # auto | qwen3_asr | none
-  fallback: qwen3_asr
-
-speech:
-  provider: auto          # auto | native | same_provider | piper | minimax
-  preferred: same_provider
-  fallback: piper
+modalities:
+  input:
+    audio: {enabled: true, models: [qwen3_asr]}
+    image: {enabled: true, models: [minicpm]}
+    video: {enabled: true, models: [minicpm]}
+  output:
+    audio:
+      enabled: true
+      auto: "off"               # off | always | inbound
+      mode: final
+      models: [minimax, piper]
 ```
 
-模型路径、隔离 Python 环境、设备、服务地址和推理参数统一保存在
+模型输入能力、路径、隔离 Python 环境、设备、服务地址和推理参数统一保存在
 `config/models.yaml`。`agent.yaml` 只保留模型选择和 Agent 行为配置。
 
 本地模型的 `deployment.command` 是不经过 Shell 的命令参数数组。例如：
@@ -171,10 +173,10 @@ deployment:
 如需设置单个服务的环境变量，可在 `deployment.environment` 中声明键值。健康检查
 固定绕过系统代理，避免 WSL 的 `HTTP_PROXY` 导致本机服务被误报为超时。
 
-`auto` 优先使用推理 provider 已注册的独立语音能力，没有时直接使用 Piper。当前 MiniCPM-o 的
-vLLM-Omni 服务没有安全的独立 TTS 接口，因此默认组合是 MiniCPM 推理 + Piper；MiniMax 仍可同时
-提供云端文本和云端语音。显式指定 provider 时不会静默回退。可用 `CAR_GENERATION_MODEL`、
-`CAR_SPEECH_PROVIDER` 临时覆盖选择。MiniMax 云端能力需要：
+音频输出按 `modalities.output.audio.models` 顺序尝试，前一个模型创建或合成失败时继续使用下一个。
+`auto: "off"` 只处理调用方显式请求的音频输出，`always` 始终朗读，`inbound` 只回复语音输入。
+当前 MiniCPM-o 服务没有安全的独立 TTS 接口，因此不放入语音链。可用 `CAR_GENERATION_MODEL` 和
+逗号分隔的 `CAR_SPEECH_MODELS` 临时覆盖选择。MiniMax 云端能力需要：
 
 ```bash
 export MINIMAX_API_KEY='请替换为云端密钥'
@@ -183,26 +185,27 @@ export MINIMAX_API_KEY='请替换为云端密钥'
 每个生成模型在 `models.yaml` 的对应条目中声明自己的生成参数：
 
 ```yaml
-providers:
+models:
   minimax:
-    intent_max_tokens: 2048
-    intent_temperature: 0.01
+    input: [text, image]
     response_max_tokens: 2048
     response_temperature: 0.2
     reasoning_split: true
 ```
 
-`intent_*` 用于结构化意图 JSON，`response_*` 用于最终自然语言回复。Agent 节点会读取当前已选择
-provider 的参数，切换 MiniCPM/MiniMax 时自动切换，不需要修改节点代码。`model`、`base_url`、
+`response_*` 用于统一 Agent Loop 的结构化决策。Runtime 会读取当前已选择
+provider 的参数，切换 MiniCPM/MiniMax 时自动切换，不需要修改业务代码。`model`、`base_url`、
 `timeout_seconds` 和 `max_retries` 也分别保留在该 provider 配置段；`reasoning_split` 仅由 MiniMax
 适配器使用。
 
-### 语音输入自动路由
+### 多模态输入自动路由
 
-Agent 根据生成模型的 `audio_input` 能力自动选择输入路径，无需额外路由配置：
+Agent 根据 `models.yaml` 的 `input` 属性选择输入路径：
 
 - `minicpm` 支持音频，WAV 直接交给 MiniCPM；Qwen3-ASR Worker 不会启动。
 - `minimax` 不支持音频，WAV 先由本地 Qwen3-ASR-0.6B 转写，再把文字交给 MiniMax。
+- 主模型不支持图片或视频时，按 `modalities.input.image/video.models` 顺序调用理解模型；
+  全部失败会明确返回错误，不会静默丢弃附件。
 
 首次部署 ASR 环境和模型：
 
@@ -219,18 +222,36 @@ bash ./llm_agent/py_env/install_python_envs.sh
 
 ```text
 llm_agent/
-├── app/            # 配置和统一 ROS Action Server 进程入口
-├── runtime/        # 与 ROS、Web、设备无关的全模态执行核心
-├── transport/ros/  # RunAgent Action Server 和类型转换
-├── agent/          # 状态、LangGraph 编排和业务节点
-├── skills/         # 高层任务编排，只能组合白名单 Tool
-├── models/         # 生成、ASR、语音 Provider、模型契约及输出校验
-├── tools/          # 强类型白名单工具和统一执行注册表
-├── prompts/        # 版本化系统、意图、回复和安全提示词
-├── config/         # 不含密钥的配置模板
-├── docs/           # 架构、接口、部署和运行文档
-└── scripts/        # 模型和 Agent 运维脚本
+├── app/run_agent.py
+├── gateway/gateway.py
+├── runtime/
+│   ├── agent_loop.py
+│   ├── prompt_builder.py
+│   └── contracts.py
+├── sessions/store.py
+├── models/
+│   ├── protocol.py
+│   ├── registry.py
+│   └── providers/
+├── tools/
+│   ├── registry.py
+│   ├── policy.py
+│   ├── types.py
+│   └── vehicle/
+├── skills/
+│   ├── loader.py
+│   ├── registry.py
+│   └── find_object/SKILL.yaml
+├── transport/ros/
+│   ├── run_agent_server.py
+│   └── robot_tool_client.py
+├── prompts/
+├── config/
+└── tests/
 ```
+
+`__init__.py` 是 Python 包入口，不承担独立业务职责。`docs/`、`scripts/` 和
+`py_env/` 仅保存文档、运维脚本与环境定义，不属于 Agent 运行模块。
 
 不要把真实 API 密钥提交到 Git。后续启用鉴权时可使用本地 `.env` 文件，并把它加入 `.gitignore`。
 
@@ -238,16 +259,20 @@ Agent 对外只有 `/car/agent/run` 一个 ROS 2 Action，Goal、Feedback 和 Re
 图片、视频和 JSON 内容块。树莓派在设备侧完成 VAD 和相机关键帧聚合，再提交同一个 Action。
 
 调试页面已拆分到仓库顶层独立模块 `agent_debug_web/`。它与树莓派完全一样，只是 `/car/agent/run`
-的客户端，不导入 Runtime、LangGraph、模型、工具或 TTS。启动方法见
+的客户端，不导入 Runtime、模型、工具或 TTS。启动方法见
 [独立 Web Debug](../agent_debug_web/README.md)。
 
-当前图支持闲聊、车辆状态查询、单步相对运动、组合运动 Skill、工具白名单校验和独立 TTS。
+当前 Agent Loop 支持闲聊、车辆状态查询、单步相对运动、组合运动 Skill、工具白名单校验和独立 TTS。
 `motion_sequence` 可以把 2～8 个明确运动步骤编排为任务序列；树莓派再次校验后通过 Nav2 串行执行。
 Agent Server 不直接发布速度或访问底盘，任意 ROS topic 发布也未开放。
 
+动态机器人任务使用 `skills/<skill_name>/SKILL.yaml`，Agent 启动时自动扫描并注册。Skill 文件只声明
+参数、目标模板、任务说明、允许工具和预算；所有动态 Skill 共用一个受约束 ReAct 执行节点，不需要
+为新任务添加 Python 节点。新增或修改 Skill 后重启 Agent 生效，运行中不进行热加载。
+
 已验证的语音对话启动、检查和排错步骤见[Agent 语音对话链路](docs/agent_ros_voice_loop.md)。
-内部设计见[Agent 架构](docs/architecture.md)、[统一请求与状态](docs/agent_state.md)、[模型 Provider](docs/model_providers.md)、
-[状态与事件](docs/agent_state.md)和[工具契约](docs/tool_contract.md)。
+内部设计见[Agent 架构](docs/architecture.md)、[状态与事件](docs/agent_state.md)、
+[模型 Provider](docs/model_providers.md)和[工具契约](docs/tool_contract.md)。
 
 ### 模型与 Agent 分离启动
 
@@ -257,8 +282,8 @@ Agent Server 不直接发布速度或访问底盘，任意 ROS topic 发布也�
 # MiniCPM + Piper
 bash ./llm_agent/scripts/start_models.sh minicpm piper
 
-# 或 MiniMax 所需的本地 ASR + Piper
-bash ./llm_agent/scripts/start_models.sh qwen3_asr piper
+# MiniMax + 媒体 fallback + Piper
+bash ./llm_agent/scripts/start_models.sh qwen3_asr minicpm piper
 ```
 
 另开终端启动 Agent：

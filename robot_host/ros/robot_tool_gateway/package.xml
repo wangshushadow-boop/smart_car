@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_tool_gateway</name>
+  <version>0.1.0</version>
+  <description>Agent Server 到树莓派硬件能力的受控工具执行网关。</description>
+  <maintainer email="small-car@example.com">small_car</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>nav2_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>sensor_msgs</depend>
+  <depend>small_car_interfaces</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>yaml-cpp</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

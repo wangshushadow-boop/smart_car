@@ -11,7 +11,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..context import ToolContext
+from ..types import ToolContext
 
 
 class GetRobotStatusArguments(BaseModel):

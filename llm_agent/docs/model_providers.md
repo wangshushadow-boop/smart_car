@@ -11,7 +11,7 @@ SpeechBackend     接收最终文本并返回标准 WAV
 ```
 
 两者可以来自不同 provider。例如使用本地 MiniCPM 理解摄像头与麦克风，同时使用 MiniMax 云端语音；
-也可以使用 MiniMax 文本模型和本地 Piper。Agent 图和 ROS 输出不依赖具体厂商。
+也可以使用 MiniMax 文本模型和本地 Piper。Agent Loop 和 ROS 输出不依赖具体厂商。
 
 ## 当前 Provider
 
@@ -22,8 +22,8 @@ SpeechBackend     接收最终文本并返回标准 WAV
 | `piper` | 不适用 | 不适用 | 不适用 | 本地 WAV |
 
 MiniMax-M3 的 OpenAI/Anthropic 兼容接口支持文本和图片；适配器会把 Runtime 的图片 data URL 转成
-对应协议的图片内容块。M3 不直接接收音频，语音请求会由 Qwen3-ASR 自动转写后再调用 MiniMax；
-视频仍会按照能力声明过滤。MiniCPM 则直接接收文本、图片、音频和视频，无需 ASR。
+对应协议的图片内容块。M3 不直接接收音频，音频会按媒体路由交给 Qwen3-ASR；视频可回退到
+MiniCPM。MiniCPM 原生接收文本、图片、音频和视频。无法处理的附件会明确报错，不再过滤丢弃。
 
 ## 配置
 
@@ -31,21 +31,24 @@ MiniMax-M3 的 OpenAI/Anthropic 兼容接口支持文本和图片；适配器会
 `llm_agent/config/models.yaml`：
 
 ```yaml
-generation_model:
-  provider: minicpm
+generation_model: minicpm
 
-asr:
-  provider: auto
-  fallback: qwen3_asr
-
-speech:
-  provider: auto
-  preferred: same_provider
-  fallback: piper
+modalities:
+  input:
+    audio: {enabled: true, models: [qwen3_asr]}
+    image: {enabled: true, models: [minicpm]}
+    video: {enabled: true, models: [minicpm]}
+  output:
+    audio:
+      enabled: true
+      auto: "off"
+      mode: final
+      models: [minimax, piper]
 ```
 
 `models.yaml` 的条目名是可选择的模型实例，`backend` 是复用的代码实现，
-`roles` 声明该实例可承担 `generation_model`、`asr` 或 `speech`。模型路径、独立
+`roles` 声明该实例可承担 `generation_model`、`asr` 或 `speech`，`input` 声明
+`text/image/audio/video` 原生输入能力。模型路径、独立
 Python 环境、设备、端点、超时及生成参数都保存在对应条目中；密钥仍只放环境变量。
 
 本地 Provider 均为独立 HTTP 服务。Agent 中的 Qwen3-ASR 与 Piper 实现只是客户端，
@@ -53,24 +56,23 @@ Python 环境、设备、端点、超时及生成参数都保存在对应条目�
 
 ```bash
 bash ./llm_agent/scripts/start_models.sh minicpm piper
-bash ./llm_agent/scripts/start_models.sh qwen3_asr piper
+bash ./llm_agent/scripts/start_models.sh qwen3_asr minicpm piper
 ```
 
 语音选择规则：
 
-- `piper`、`minimax`：严格使用指定 provider，失败时保留文本并报告 TTS 错误；
-- `native` 或 `same_provider`：严格使用当前生成模型的语音能力；
-- `auto`：优先 `preferred`，不可创建或合成失败时使用 `fallback`。
+- `models` 是有序模型链，前一个模型不可创建或合成失败时尝试下一个；
+- `auto: "off"` 仅响应显式 AUDIO 输出请求，`always` 始终朗读最终回答；
+- `auto: inbound` 仅在本轮包含语音输入时朗读；
+- 所有 TTS 失败时保留文字结果并报告部分失败。
 
-当生成模型为 MiniCPM 时，`same_provider` 没有对应的独立语音后端：`auto` 会直接选择
-Piper；显式设置 `speech.provider=minicpm`、`native` 或 `same_provider` 会在启动时安全报错，不会向
-Omni Talker 发出请求。
+MiniCPM 当前没有注册独立语音后端，因此不能放入输出模型链，也不会向 Omni Talker 发出请求。
 
 环境变量覆盖：
 
 ```bash
 export CAR_GENERATION_MODEL=minicpm
-export CAR_SPEECH_PROVIDER=auto
+export CAR_SPEECH_MODELS=minimax,piper
 ```
 
 MiniMax 密钥只能通过环境变量提供：
@@ -99,20 +101,20 @@ bash ./llm_agent/tests/run_tests.sh
 
 ```yaml
 # 本地多模态 + Piper 本地语音
-generation_model: {provider: minicpm}
-speech: {provider: auto, preferred: same_provider, fallback: piper}
+generation_model: minicpm
+modalities: {output: {audio: {models: [piper]}}}
 ```
 
 ```yaml
 # 本地多模态 + MiniMax 云端语音，失败回退 Piper
-generation_model: {provider: minicpm}
-speech: {provider: auto, preferred: minimax, fallback: piper}
+generation_model: minicpm
+modalities: {output: {audio: {models: [minimax, piper]}}}
 ```
 
 ```yaml
 # MiniMax 云端文本 + MiniMax 云端语音
-generation_model: {provider: minimax}
-speech: {provider: minimax, preferred: same_provider, fallback: piper}
+generation_model: minimax
+modalities: {output: {audio: {models: [minimax]}}}
 ```
 
 ## 标准输出
@@ -129,11 +131,11 @@ speech: {provider: minimax, preferred: same_provider, fallback: piper}
 
 ## 增加新 Provider
 
-1. 在 `models/<provider>/` 实现 generation 和/或 speech；
+1. 在 `models/providers/<provider>/` 实现 generation、ASR 或 speech；
 2. 声明真实能力，不支持的模态必须在网络调用前拒绝；
 3. 将厂商响应转换成 `ModelResponse` 或 `SpeechResponse`；
 4. 在 `create_default_registry()` 显式注册；
-5. 在 `config/agent.yaml` 添加不含密钥的参数；
+5. 在 `config/models.yaml` 声明模型属性，在 `config/agent.yaml` 声明路由策略；
 6. 添加参数映射、错误、超时、非法输出和回退测试。
 
 MiniMax 文本接口参考：<https://platform.minimax.io/docs/api-reference/text-openai-api>；MiniMax T2A 接口

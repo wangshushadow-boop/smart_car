@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from llm_agent.models.qwen3_asr import Qwen3Asr, TranscriptionRequest
+from llm_agent.models.providers.qwen3_asr import Qwen3Asr, TranscriptionRequest
 
 
 class FakeHttpResponse:

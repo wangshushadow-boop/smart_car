@@ -6,7 +6,30 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from threading import Event
+from typing import Any, Protocol, Type
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+@dataclass(frozen=True)
+class ToolContext:
+    """Tool 执行时可访问的受限请求上下文。"""
+
+    request_id: str
+    cancelled: Event
+    services: dict[str, Any]
+
+
+class AgentTool(Protocol):
+    """所有原子 Tool 必须实现的注册与执行契约。"""
+
+    name: str
+    description: str
+    arguments_model: Type[BaseModel]
+
+    def execute(self, arguments: BaseModel, context: ToolContext) -> dict: ...
 
 
 class ToolCall(BaseModel):

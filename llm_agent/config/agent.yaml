@@ -1,30 +1,55 @@
 # Secrets stay in environment variables.  MINIMAX_API_KEY is never stored here.
-generation_model:
-  # minicpm， minimax
-  provider: minimax
+# Agent 主推理模型；具体模型属性统一在 models.yaml 中声明。
+generation_model: minimax
 
-asr:
-  # auto: 生成模型不支持音频时使用 fallback；none: 禁用转写。
-  provider: auto
-  fallback: qwen3_asr
+# 输入与输出使用相同的有序模型链语义：前一个失败后尝试下一个。
+modalities:
+  input:
+    # 主模型原生支持时直接传入；不支持时才调用这里的理解模型。
+    audio:
+      enabled: true
+      models: [qwen3_asr]
+      max_bytes: 20971520
+      max_chars: 10000
+      prompt: 请转写这段音频。
+    image:
+      enabled: false
+      models: [minicpm]
+      max_bytes: 10485760
+      max_chars: 1000
+      prompt: 请准确描述图片中与用户请求相关的内容。
+    video:
+      enabled: false
+      models: [minicpm]
+      max_bytes: 52428800
+      max_chars: 1500
+      prompt: 请概括视频中与用户请求相关的事件。
 
-speech:
-  # auto: prefer the selected model's standalone speech capability, then use fallback.
-  # MiniCPM-o does not expose safe standalone TTS in the current vLLM-Omni service,
-  # so the default MiniCPM model configuration resolves to Piper.
-  # Other choices: piper, minimax, native, same_provider.
-  provider: auto
-  preferred: same_provider
-  fallback: piper
+  output:
+    audio:
+      enabled: true
+      # off：仅显式请求 AUDIO 时合成；always：始终合成；inbound：语音输入时合成。
+      auto: "always"
+      # 当前只朗读最终回答，不朗读 Tool/Skill 的中间过程。
+      mode: final
+      models: [minimax, piper]
+      min_chars: 2
+      max_chars: 1000
+      timeout_seconds: 60
+      # 所有语音模型失败时仍返回文字，不让 TTS 影响机器人任务结果。
+      failure: text_only
 
 runtime:
   # 防止调用方把过大的媒体直接塞入 DDS Action Goal。
   max_inline_bytes: 67108864
   # Skill 只编排白名单 Tool；关闭后复合任务不会进入执行分支。
   skills_enabled: true
-  # 短期多轮上下文只保存在 Agent Server 内存中，重启后自动清空。
+  # 默认使用 SQLite 保存 Session，Agent 重启后仍可恢复文字上下文与执行轨迹。
   conversation_enabled: true
   conversation_max_turns: 8
   conversation_max_context_chars: 12000
   conversation_ttl_seconds: 1800
   conversation_max_sessions: 128
+  session_store: sqlite
+  session_database_path: ~/.local/state/smart_car/agent_sessions.sqlite3
+  agent_max_model_turns: 20

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from llm_agent.models.response_parser import parse_json_object, sanitize_spoken_answer
+from llm_agent.models.protocol import parse_json_object, sanitize_spoken_answer
 
 
 class ResponseParserTest(unittest.TestCase):

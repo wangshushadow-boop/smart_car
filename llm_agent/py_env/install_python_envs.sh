@@ -47,7 +47,7 @@ for file in zh_CN-huayan-medium.onnx zh_CN-huayan-medium.onnx.json; do
     -o "${voice_dir}/${file}" "${voice_url}/${file}"
 done
 
-"${venv_dir}/agent/bin/python" -c "import langgraph, openai, pydantic, yaml"
+"${venv_dir}/agent/bin/python" -c "import openai, pydantic, yaml"
 "${venv_dir}/minicpm/bin/python" -c "import vllm, vllm_omni"
 "${venv_dir}/minicpm/bin/vllm" --help >/dev/null
 "${venv_dir}/qwen3-asr/bin/python" -c "import qwen_asr"

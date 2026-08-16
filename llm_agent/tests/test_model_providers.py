@@ -8,12 +8,10 @@ import wave
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from llm_agent.models.minimax.generation import MiniMaxGeneration
-from llm_agent.models.minimax.speech import MiniMaxSpeech
-from llm_agent.models.minicpm.generation import MiniCpmGeneration
-from llm_agent.models.audio import inspect_pcm16_wav
-from llm_agent.models.piper import PiperSpeech
-from llm_agent.models.types import ModelRequest, SpeechRequest
+from llm_agent.models.protocol import ModelRequest, SpeechRequest, inspect_pcm16_wav
+from llm_agent.models.providers.minicpm import MiniCpmGeneration
+from llm_agent.models.providers.minimax import MiniMaxGeneration, MiniMaxSpeech
+from llm_agent.models.providers.piper import PiperSpeech
 
 
 def make_wav() -> bytes:
@@ -86,7 +84,6 @@ class ModelProvidersTest(unittest.TestCase):
     def test_minicpm_maps_all_input_modalities(self) -> None:
         client = FakeOpenAiClient()
         model = MiniCpmGeneration(client=client)
-        self.assertEqual(model.capabilities.intent_max_tokens, 160)
         self.assertEqual(model.capabilities.response_max_tokens, 256)
         model.complete(
             ModelRequest(
@@ -106,7 +103,6 @@ class ModelProvidersTest(unittest.TestCase):
     def test_minimax_generation_uses_provider_specific_parameters(self) -> None:
         client = FakeOpenAiClient()
         model = MiniMaxGeneration({"model": "MiniMax-M3"}, client=client)
-        self.assertEqual(model.capabilities.intent_max_tokens, 2048)
         self.assertEqual(model.capabilities.response_max_tokens, 2048)
         response = model.complete(
             ModelRequest(
@@ -123,8 +119,6 @@ class ModelProvidersTest(unittest.TestCase):
     def test_generation_parameters_can_be_overridden_per_provider(self) -> None:
         minicpm = MiniCpmGeneration(
             {
-                "intent_max_tokens": 320,
-                "intent_temperature": 0.1,
                 "response_max_tokens": 640,
                 "response_temperature": 0.4,
             },
@@ -133,8 +127,6 @@ class ModelProvidersTest(unittest.TestCase):
         minimax_client = FakeOpenAiClient()
         minimax = MiniMaxGeneration(
             {
-                "intent_max_tokens": 1024,
-                "intent_temperature": 0.02,
                 "response_max_tokens": 1536,
                 "response_temperature": 0.3,
                 "reasoning_split": False,
@@ -142,9 +134,9 @@ class ModelProvidersTest(unittest.TestCase):
             client=minimax_client,
         )
 
-        self.assertEqual(minicpm.capabilities.intent_max_tokens, 320)
+        self.assertEqual(minicpm.capabilities.response_max_tokens, 640)
         self.assertEqual(minicpm.capabilities.response_temperature, 0.4)
-        self.assertEqual(minimax.capabilities.intent_temperature, 0.02)
+        self.assertEqual(minimax.capabilities.response_temperature, 0.3)
         self.assertEqual(minimax.capabilities.response_max_tokens, 1536)
         minimax.complete(ModelRequest(system_prompt="system", user_prompt="hello"))
         self.assertFalse(

@@ -11,6 +11,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AgentResponse.msg"
   "msg/AgentProgress.msg"
   "action/RunAgent.action"
+  "action/ExecuteRobotTool.action"
   DEPENDENCIES builtin_interfaces
 )
 

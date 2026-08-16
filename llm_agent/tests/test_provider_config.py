@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from llm_agent.app.config import load_agent_config
+from llm_agent.config import load_agent_config
 from llm_agent.models.registry import (
     ProviderRegistry,
     check_required_model_services,
@@ -13,7 +13,7 @@ from llm_agent.models.registry import (
     required_local_models,
     select_backends,
 )
-from llm_agent.models.types import ModelResponse, SpeechResponse
+from llm_agent.models.protocol import ModelResponse, SpeechResponse
 
 
 class FakeGeneration:
@@ -44,17 +44,25 @@ class ProviderConfigTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         path = Path(temporary.name) / "agent.yaml"
-        if "\nasr:" not in content:
-            content += "\nasr:\n  provider: none\n  fallback: qwen3_asr\n"
+        if "\nmodalities:" not in content:
+            content += """
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: false, models: []}
+"""
         path.write_text(content, encoding="utf-8")
         models_path = Path(temporary.name) / "models.yaml"
         models_path.write_text(
             models
             or """
 models:
-  minicpm: {backend: minicpm, roles: [generation_model]}
-  minimax: {backend: minimax, roles: [generation_model, speech]}
-  qwen3_asr: {backend: qwen3_asr, roles: [asr]}
+  minicpm: {backend: minicpm, roles: [generation_model], input: [text, image, audio, video]}
+  minimax: {backend: minimax, roles: [generation_model, speech], input: [text, image]}
+  qwen3_asr: {backend: qwen3_asr, roles: [asr], input: [audio]}
   piper: {backend: piper, roles: [speech]}
   local: {backend: local, roles: [generation_model, speech]}
   cloud: {backend: cloud, roles: [speech]}
@@ -65,40 +73,44 @@ models:
 
     def test_environment_overrides_provider_selection(self) -> None:
         config_text = """
-generation_model:
-  provider: minicpm
-speech:
-  provider: piper
-  preferred: same_provider
-  fallback: piper
+generation_model: minicpm
 """
         with patch.dict(
             "os.environ",
             {
                 "CAR_GENERATION_MODEL": "minimax",
-                "CAR_SPEECH_PROVIDER": "auto",
-                "CAR_ASR_PROVIDER": "none",
+                "CAR_SPEECH_MODELS": "minimax,piper",
             },
         ):
             config = self._config(config_text)
-        self.assertEqual(config.generation_model.provider, "minimax")
-        self.assertEqual(config.speech.provider, "auto")
-        self.assertEqual(config.asr.provider, "none")
+        self.assertEqual(config.generation_model, "minimax")
+        self.assertEqual(config.modalities.output.audio.models, ["minimax", "piper"])
+        self.assertFalse(config.modalities.input.audio.enabled)
         self.assertTrue(config.runtime.conversation_enabled)
         self.assertEqual(config.runtime.conversation_max_turns, 8)
+
+    def test_repository_config_declares_model_inputs_and_media_fallbacks(self) -> None:
+        config = load_agent_config()
+        self.assertEqual(config.generation_model, "minimax")
+        self.assertEqual(config.models["minimax"].input, ["text", "image"])
+        self.assertEqual(config.modalities.input.audio.models, ["qwen3_asr"])
+        self.assertEqual(config.modalities.input.video.models, ["minicpm"])
+        self.assertEqual(
+            required_local_models(config),
+            ["qwen3_asr", "minicpm", "piper"],
+        )
 
     def test_models_are_loaded_from_separate_catalog(self) -> None:
         config = self._config(
             """
-generation_model: {provider: local}
-asr: {provider: none, fallback: qwen3_asr}
-speech: {provider: piper, preferred: same_provider, fallback: piper}
+generation_model: local
 """,
             """
 models:
   local:
     backend: local
     roles: [generation_model]
+    input: [text]
     model: local-model
     timeout_seconds: 12
   piper: {backend: piper, roles: [speech]}
@@ -107,29 +119,61 @@ models:
 
         self.assertEqual(config.models["local"].backend, "local")
         self.assertEqual(config.models["local"].settings()["model"], "local-model")
+        self.assertEqual(config.models["local"].settings()["input"], ["text"])
         self.assertNotIn("roles", config.models["local"].settings())
 
     def test_default_registry_does_not_expose_unsafe_minicpm_speech(self) -> None:
         registry = create_default_registry()
         self.assertFalse(registry.has_speech("minicpm"))
 
+    def test_legacy_media_and_speech_sections_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self._config(
+                """
+generation_model: local
+media: {}
+speech: {provider: piper}
+"""
+            )
+
+    def test_duplicate_speech_models_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "不能包含重复模型"):
+            self._config(
+                """
+generation_model: local
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [piper, piper]}
+"""
+            )
+
     def test_required_local_models_follow_agent_capabilities(self) -> None:
         config = self._config(
             """
-generation_model: {provider: minimax}
-asr: {provider: auto, fallback: qwen3_asr}
-speech: {provider: auto, preferred: same_provider, fallback: piper}
+generation_model: minimax
+modalities:
+  input:
+    audio: {enabled: true, models: [qwen3_asr]}
+    image: {enabled: true, models: [minicpm]}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [minimax, piper]}
 """,
             """
 models:
   minimax:
     backend: minimax
     roles: [generation_model, speech]
-    capabilities: {audio_input: false}
+    input: [text, image]
     deployment: {local: false}
   qwen3_asr:
     backend: qwen3_asr
     roles: [asr]
+    input: [audio]
     deployment: {local: true, health_url: http://127.0.0.1:8100/health}
   piper:
     backend: piper
@@ -142,16 +186,21 @@ models:
     def test_missing_model_services_report_start_command(self) -> None:
         config = self._config(
             """
-generation_model: {provider: local}
-asr: {provider: none, fallback: qwen3_asr}
-speech: {provider: piper, preferred: same_provider, fallback: piper}
+generation_model: local
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [piper]}
 """,
             """
 models:
   local:
     backend: local
     roles: [generation_model]
-    capabilities: {audio_input: true}
+    input: [text, audio]
     deployment: {local: true, health_url: http://127.0.0.1:9000/health}
   piper:
     backend: piper
@@ -167,15 +216,17 @@ models:
                 config, opener=lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline"))
             )
 
-    def test_auto_uses_same_provider_then_fallback(self) -> None:
+    def test_speech_models_are_tried_in_order(self) -> None:
         config = self._config(
             """
-generation_model:
-  provider: local
-speech:
-  provider: auto
-  preferred: same_provider
-  fallback: piper
+generation_model: local
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [local, piper]}
 """
         )
         registry = ProviderRegistry()
@@ -189,15 +240,17 @@ speech:
         self.assertEqual(generation.provider_name, "fake_generation")
         self.assertEqual(response.provider, "piper")
 
-    def test_explicit_speech_provider_does_not_fallback(self) -> None:
+    def test_single_speech_model_propagates_failure(self) -> None:
         config = self._config(
             """
-generation_model:
-  provider: local
-speech:
-  provider: local
-  preferred: same_provider
-  fallback: piper
+generation_model: local
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [local]}
 """
         )
         registry = ProviderRegistry()
@@ -210,15 +263,17 @@ speech:
         with self.assertRaises(RuntimeError):
             speech.synthesize(type("Request", (), {"text": "hello"})())
 
-    def test_auto_falls_back_when_primary_cannot_be_created(self) -> None:
+    def test_route_skips_model_that_cannot_be_created(self) -> None:
         config = self._config(
             """
-generation_model:
-  provider: local
-speech:
-  provider: auto
-  preferred: cloud
-  fallback: piper
+generation_model: local
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [cloud, piper]}
 """
         )
         registry = ProviderRegistry()
@@ -230,15 +285,17 @@ speech:
         _, _, speech = select_backends(config, registry)
         self.assertEqual(speech.provider_name, "piper")
 
-    def test_auto_uses_fallback_when_generation_has_no_speech_backend(self) -> None:
+    def test_speech_route_does_not_depend_on_generation_backend(self) -> None:
         config = self._config(
             """
-generation_model:
-  provider: local
-speech:
-  provider: auto
-  preferred: same_provider
-  fallback: piper
+generation_model: local
+modalities:
+  input:
+    audio: {enabled: false, models: []}
+    image: {enabled: false, models: []}
+    video: {enabled: false, models: []}
+  output:
+    audio: {enabled: true, models: [piper]}
 """
         )
         registry = ProviderRegistry()

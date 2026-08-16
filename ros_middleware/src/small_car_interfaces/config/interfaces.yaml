@@ -34,6 +34,14 @@ actions:
     server: llm_agent
     clients: [robot_host/agent_client, agent_debug_web]
 
+  # Agent Server 通过此内部 Action 请求树莓派执行严格受限的原子工具。
+  # Gateway 对每个参数做第二次校验，并使用 task_id + step_id 去重。
+  robot_tool_execute:
+    name: /car/agent/tool_execute
+    type: small_car_interfaces/action/ExecuteRobotTool
+    server: robot_host/robot_tool_gateway
+    clients: [llm_agent/robot_tool_client]
+
   # Agent Server 只生成声明式任务；树莓派再次校验后交给 Nav2 behavior_server。
   nav_drive_on_heading:
     name: /drive_on_heading

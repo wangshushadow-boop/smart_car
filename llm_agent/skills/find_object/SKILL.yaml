@@ -1,0 +1,31 @@
+schema: small_car.skill.v1
+name: find_object
+description: 通过相机、云台和受限运动自主寻找指定物体
+
+arguments:
+  target_name:
+    type: string
+    required: true
+    min_length: 1
+    max_length: 64
+
+goal: 找到{{ target_name }}并移动到它旁边
+
+instructions: |
+  优先转动相机搜索，搜索不到时再旋转车体。
+  只有画面明确出现目标才能报告完成。
+  靠近目标前必须确认目标仍在画面中，每次只执行一个动作。
+
+allowed_tools:
+  - capture_camera
+  - set_camera_pan
+  - set_camera_tilt
+  - rotate_relative
+  - move_relative
+  - stop_motion
+
+limits:
+  max_steps: 12
+  timeout_seconds: 90
+  max_total_rotation_deg: 360
+  max_total_distance_m: 1.5

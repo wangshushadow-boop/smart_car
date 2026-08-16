@@ -12,9 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from pydantic import ValidationError
 
-from .context import ToolContext
-from .protocol import AgentTool
-from .types import ToolCall, ToolResult
+from .types import AgentTool, ToolCall, ToolContext, ToolResult
 
 
 class ToolRegistry:
@@ -39,6 +37,22 @@ class ToolRegistry:
     def contains(self, name: str) -> bool:
         """白名单查询；供 `safety_check`/`skill_safety_check` 节点拦截非法调用。"""
         return name in self._tools
+
+    def names(self) -> list[str]:
+        """按注册顺序返回工具名称，供 Prompt 和权限策略生成有效工具面。"""
+        return list(self._tools)
+
+    def catalog_prompt(self, names: list[str] | None = None) -> str:
+        """为通用任务节点输出白名单工具及其参数 JSON Schema。"""
+        lines: list[str] = []
+        selected_names = self.names() if names is None else names
+        for name in selected_names:
+            tool = self._tools.get(name)
+            if tool is None:
+                raise ValueError(f"tool is not registered: {name}")
+            schema = tool.arguments_model.model_json_schema()
+            lines.append(f"- {name}: {tool.description}; 参数={schema}")
+        return "\n".join(lines)
 
     def validate(self, call: ToolCall) -> str | None:
         """只校验白名单和参数，不执行 Tool。

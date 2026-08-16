@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -126,3 +127,32 @@ class RuntimeResponse(BaseModel):
     error_code: str = ""
     error_message: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def _as_data_url(part: ContentPart) -> str:
+    """将内联媒体转换为模型接口通用的 data URL。"""
+    if part.data:
+        mime_type = part.mime_type or "application/octet-stream"
+        encoded = base64.b64encode(part.data).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
+    if part.uri:
+        return part.uri
+    raise ValueError(f"当前 Agent Server 不能直接读取实时 topic 引用：{part.topic}")
+
+
+def model_inputs(request: RuntimeRequest) -> tuple[str, list[str], list[str], list[str]]:
+    """按文字、音频、图片、视频拆解统一请求。"""
+    texts: list[str] = []
+    audio: list[str] = []
+    images: list[str] = []
+    videos: list[str] = []
+    for part in request.inputs:
+        if part.type in {ContentType.TEXT, ContentType.JSON}:
+            texts.append(part.text.strip())
+        elif part.type == ContentType.AUDIO:
+            audio.append(_as_data_url(part))
+        elif part.type == ContentType.IMAGE:
+            images.append(_as_data_url(part))
+        elif part.type == ContentType.VIDEO:
+            videos.append(_as_data_url(part))
+    return "\n".join(filter(None, texts)), audio, images, videos

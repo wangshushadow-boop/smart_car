@@ -8,15 +8,28 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..context import ToolContext
+from ..types import ToolContext
 
 
 # 树莓派侧 Nav2 客户端据此判断任务类型；版本号 v1 兼容旧消息体。
 MOTION_TASK_SCHEMA = "small_car.motion.v1"
+
+
+class RobotToolExecutor(Protocol):
+    def execute(
+        self,
+        tool_name: str,
+        arguments: dict,
+        *,
+        task_id: str,
+        cancelled,
+        timeout_seconds: float = 20.0,
+        request_observation: bool = False,
+    ) -> dict: ...
 
 
 class MoveRelativeArguments(BaseModel):
@@ -64,10 +77,23 @@ class MoveRelativeTool:
     name = "move_relative"
     description = "让小车相对前进或后退，单次距离不超过 2 米"
     arguments_model = MoveRelativeArguments
+    timeout_seconds = 22.0
+
+    def __init__(self, executor: RobotToolExecutor | None = None) -> None:
+        self._executor = executor
 
     def execute(
         self, arguments: MoveRelativeArguments, context: ToolContext
     ) -> dict:
+        if self._executor is not None:
+            return self._executor.execute(
+                self.name,
+                {"distance_m": arguments.distance_m},
+                task_id=context.request_id,
+                cancelled=context.cancelled,
+                timeout_seconds=20.0,
+                request_observation=True,
+            )
         del context
         return {
             "schema": MOTION_TASK_SCHEMA,
@@ -82,17 +108,30 @@ class RotateRelativeTool:
     name = "rotate_relative"
     description = "让小车原地左转或右转，单次角度不超过 180 度"
     arguments_model = RotateRelativeArguments
+    timeout_seconds = 22.0
+
+    def __init__(self, executor: RobotToolExecutor | None = None) -> None:
+        self._executor = executor
 
     def execute(
         self, arguments: RotateRelativeArguments, context: ToolContext
     ) -> dict:
-        del context
         angle_deg = arguments.angle_deg
         # 显式方向消除模型对正负号约定的歧义；未提供时兼容旧模型。
         if arguments.direction == "left":
             angle_deg = abs(angle_deg)
         elif arguments.direction == "right":
             angle_deg = -abs(angle_deg)
+        if self._executor is not None:
+            return self._executor.execute(
+                self.name,
+                {"angle_deg": angle_deg},
+                task_id=context.request_id,
+                cancelled=context.cancelled,
+                timeout_seconds=20.0,
+                request_observation=True,
+            )
+        del context
         return {
             "schema": MOTION_TASK_SCHEMA,
             "action": self.name,
@@ -106,7 +145,20 @@ class StopMotionTool:
     name = "stop_motion"
     description = "取消小车当前正在执行的运动任务"
     arguments_model = StopMotionArguments
+    timeout_seconds = 7.0
+
+    def __init__(self, executor: RobotToolExecutor | None = None) -> None:
+        self._executor = executor
 
     def execute(self, arguments: StopMotionArguments, context: ToolContext) -> dict:
-        del arguments, context
+        del arguments
+        if self._executor is not None:
+            return self._executor.execute(
+                self.name,
+                {},
+                task_id=context.request_id,
+                cancelled=context.cancelled,
+                timeout_seconds=5.0,
+            )
+        del context
         return {"schema": MOTION_TASK_SCHEMA, "action": self.name}

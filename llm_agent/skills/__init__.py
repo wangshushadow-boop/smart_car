@@ -4,14 +4,22 @@
 所有对外暴露类型与 Skill 都在这里集中 re-export。
 """
 
-from .motion_sequence import MotionSequenceSkill
-from .registry import SkillRegistry
-from .types import SkillCall, SkillPlan, SkillPlanResult
+from .loader import load_skill_directory
+from .registry import (
+    MotionSequenceSkill,
+    RobotTask,
+    RobotTaskLimits,
+    SkillCall,
+    SkillPlan,
+    SkillRegistry,
+)
 
 __all__ = [
+    "load_skill_directory",
     "MotionSequenceSkill",
+    "RobotTask",
+    "RobotTaskLimits",
     "SkillCall",
     "SkillPlan",
-    "SkillPlanResult",
     "SkillRegistry",
 ]

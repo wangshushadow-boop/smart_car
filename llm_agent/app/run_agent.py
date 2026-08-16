@@ -3,9 +3,9 @@
 这是 `llm_agent` 在 WSL 上的唯一进程入口，启动顺序：
 1. 单实例锁：防止同一台主机上重复启动 Action Server 抢占 `/car/agent/run`。
 2. 配置加载：根据 `agent.yaml` 与环境变量构建 `AgentConfig`。
-3. Runtime 装配：`create_runtime(config)` 选择 Provider、构建 Skill 白名单、
-   编译 LangGraph。
-4. Action Server 启动：在 ROS 2 多线程 Executor 上提供唯一 Action 接口。
+3. Runtime 装配：选择 Provider、扫描 Skill、注册 Tool 并构造唯一 Agent Loop。
+4. Gateway 装配：增加请求幂等和同 Session 串行控制。
+5. Action Server 启动：在 ROS 2 多线程 Executor 上提供唯一 Action 接口。
 5. 信号处理：`Ctrl+C` 或 ROS 外部关闭信号触发优雅退出。
 """
 
@@ -21,18 +21,23 @@ from typing import Iterator, TextIO
 import rclpy
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 
-from llm_agent.runtime.factory import create_runtime
-from llm_agent.transport.ros.agent_server import AgentActionServer
-from llm_agent.transport.ros.interface_contract import load_agent_action_name
+from llm_agent.gateway import AgentGateway
+from llm_agent.runtime.agent_loop import create_runtime
+from llm_agent.transport.ros.run_agent_server import (
+    AgentActionServer,
+    load_agent_action_name,
+    load_robot_tool_action_name,
+)
+from llm_agent.transport.ros.robot_tool_client import RosRobotToolClient
 
-from .config import load_agent_config
+from llm_agent.config import load_agent_config
 
 
 def _configure_model_output_logger() -> None:
     """将模型原始文本输出到前台终端，避免被 ROS 日志配置吞掉。
 
-    `understand_intent` 与 `generate_response` 节点在解析前后都会写入
-    `llm_agent.model_output` logger；这里独立挂一个 StreamHandler，
+    `AgentLoop` 在解析每轮结构化决策前写入 `llm_agent.model_output` logger；
+    这里独立挂一个 StreamHandler，
     不走 ROS 的日志系统，保证调试时能直接看到模型原始 JSON。
     """
 
@@ -78,10 +83,14 @@ def main() -> None:
             _configure_model_output_logger()
             rclpy.init()
             config = load_agent_config()
-            # 创建 Runtime，同时拿到实际启用的 Provider 名称用于启动日志。
-            runtime, generation_name, speech_name = create_runtime(config)
+            # 生产环境的运动 Tool 通过独立 ROS 客户端访问树莓派安全 Gateway。
+            robot_tool_client = RosRobotToolClient(load_robot_tool_action_name())
+            runtime, generation_name, speech_name = create_runtime(
+                config, robot_tool_executor=robot_tool_client
+            )
+            gateway = AgentGateway(runtime)
             node = AgentActionServer(
-                runtime,
+                gateway,
                 load_agent_action_name(),
                 max_inline_bytes=config.runtime.max_inline_bytes,
             )
@@ -92,16 +101,18 @@ def main() -> None:
             # 多线程 Executor：feedback publish 与 goal 处理不会互相阻塞。
             executor = MultiThreadedExecutor(num_threads=4)
             executor.add_node(node)
+            executor.add_node(robot_tool_client)
             try:
                 executor.spin()
             except (KeyboardInterrupt, ExternalShutdownException):
                 # Ctrl+C 或 ROS 外部关闭信号都走优雅退出路径。
                 pass
             finally:
-                # 通知 Runtime 停止接收新请求；正在执行的 LangGraph 让其自然结束。
-                runtime.stop()
+                # Gateway 先拒绝新请求，再由 Runtime 关闭持久化 SessionStore。
+                gateway.stop()
                 executor.shutdown()
                 node.destroy_node()
+                robot_tool_client.destroy_node()
                 if rclpy.ok():
                     rclpy.shutdown()
     except RuntimeError as error:

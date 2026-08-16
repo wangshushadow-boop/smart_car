@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from llm_agent.transport.ros.tracing import ros_trace_scope
+from llm_agent.transport.ros.run_agent_server import ros_trace_scope
 
 
 class _TraceLibrary:
@@ -22,7 +22,7 @@ class _TraceLibrary:
 
 class RosTracingTest(unittest.TestCase):
     def test_missing_trace_library_is_a_noop(self) -> None:
-        with patch("llm_agent.transport.ros.tracing._trace_library", return_value=None):
+        with patch("llm_agent.transport.ros.run_agent_server._trace_library", return_value=None):
             with ros_trace_scope(lambda: None, "callback"):
                 value = 1
         self.assertEqual(value, 1)
@@ -35,7 +35,7 @@ class RosTracingTest(unittest.TestCase):
                 return None
 
         target = Target()
-        with patch("llm_agent.transport.ros.tracing._trace_library", return_value=library):
+        with patch("llm_agent.transport.ros.run_agent_server._trace_library", return_value=library):
             with ros_trace_scope(target.callback, "Target.callback"):
                 pass
             with ros_trace_scope(target.callback, "Target.callback"):
@@ -52,7 +52,7 @@ class RosTracingTest(unittest.TestCase):
         library = _TraceLibrary()
         callback = lambda: None
 
-        with patch("llm_agent.transport.ros.tracing._trace_library", return_value=library):
+        with patch("llm_agent.transport.ros.run_agent_server._trace_library", return_value=library):
             with self.assertRaisesRegex(RuntimeError, "boom"):
                 with ros_trace_scope(callback, "callback"):
                     raise RuntimeError("boom")

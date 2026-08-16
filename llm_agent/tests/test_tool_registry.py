@@ -6,9 +6,8 @@ from threading import Event
 
 from pydantic import BaseModel
 
-from llm_agent.tools.context import ToolContext
 from llm_agent.tools.registry import ToolRegistry
-from llm_agent.tools.types import ToolCall
+from llm_agent.tools.types import ToolCall, ToolContext
 from llm_agent.tools.vehicle.status import GetRobotStatusTool, RobotStatus
 
 

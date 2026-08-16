@@ -3,18 +3,15 @@ models:
   minicpm:
     backend: minicpm
     roles: [generation_model]
+    input: [text, image, audio, video]
     base_url: http://127.0.0.1:8099/v1
     model: /mnt/d/AI/models/MiniCPM-o-4_5-AWQ
     python: /mnt/d/work/smart_car/llm_agent/py_env/venvs/minicpm/bin/python
     device: cuda:0
     timeout_seconds: 90
     max_retries: 1
-    intent_max_tokens: 160
-    intent_temperature: 0.0
     response_max_tokens: 256
     response_temperature: 0.2
-    capabilities:
-      audio_input: true
     deployment:
       local: true
       # 通用参数数组由启动器原样执行；新增模型时不需要修改 Python 代码。
@@ -35,18 +32,15 @@ models:
   minimax:
     backend: minimax
     roles: [generation_model, speech]
+    input: [text, image]
     protocol: openai
     base_url: https://api.minimaxi.com/v1
     model: MiniMax-M3
     timeout_seconds: 90
     max_retries: 1
-    intent_max_tokens: 2048
-    intent_temperature: 0.01
     response_max_tokens: 2048
     response_temperature: 0.2
     reasoning_split: true
-    capabilities:
-      audio_input: false
     speech_url: https://api.minimaxi.com/v1/t2a_v2
     speech_model: speech-2.8-turbo
     voice_id: Chinese (Mandarin)_Reliable_Executive
@@ -58,6 +52,7 @@ models:
   qwen3_asr:
     backend: qwen3_asr
     roles: [asr]
+    input: [audio]
     endpoint: http://127.0.0.1:8100
     language: Chinese
     timeout_seconds: 120
@@ -66,7 +61,7 @@ models:
       command:
         - /mnt/d/work/smart_car/llm_agent/py_env/venvs/qwen3-asr/bin/python
         - -m
-        - llm_agent.models.qwen3_asr.server
+        - llm_agent.models.providers.qwen3_asr.server
         - --model
         - /mnt/d/AI/models/Qwen3-ASR-0.6B
         - --device
@@ -81,6 +76,7 @@ models:
   piper:
     backend: piper
     roles: [speech]
+    input: []
     endpoint: http://127.0.0.1:8101
     timeout_seconds: 30
     deployment:
@@ -88,7 +84,7 @@ models:
       command:
         - /mnt/d/work/smart_car/llm_agent/py_env/venvs/agent/bin/python
         - -m
-        - llm_agent.models.piper.server
+        - llm_agent.models.providers.piper.server
         - --model
         - /mnt/d/AI/models/piper/zh_CN-huayan-medium/zh_CN-huayan-medium.onnx
         - --config

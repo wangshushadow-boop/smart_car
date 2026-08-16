@@ -1,0 +1,26 @@
+version: 1
+
+# Agent Server 负责第一层参数校验；树莓派 Gateway 必须再次按本契约校验。
+tools:
+  move_relative:
+    timeout_seconds: 20.0
+    arguments:
+      distance_m: {min: -2.0, max: 2.0, minimum_absolute: 0.05}
+  rotate_relative:
+    timeout_seconds: 20.0
+    arguments:
+      angle_deg: {min: -180.0, max: 180.0, minimum_absolute: 1.0}
+  stop_motion:
+    timeout_seconds: 5.0
+    arguments: {}
+  set_camera_pan:
+    timeout_seconds: 5.0
+    arguments:
+      angle_deg: {min: -90.0, max: 90.0}
+  set_camera_tilt:
+    timeout_seconds: 5.0
+    arguments:
+      angle_deg: {min: -45.0, max: 45.0}
+  capture_camera:
+    timeout_seconds: 5.0
+    arguments: {}

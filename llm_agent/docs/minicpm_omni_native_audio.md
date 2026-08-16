@@ -1,7 +1,7 @@
 # MiniCPM-o AWQ 语音能力限制
 
-> 重要：当前 Agent 不调用 MiniCPM-o 的独立语音 WebSocket，也不注册 `speech.provider=minicpm`。
-> 默认 `auto` 会为 MiniCPM 生成模型直接选择 Piper。不要把任意最终文本直接发送到
+> 重要：当前 Agent 不调用 MiniCPM-o 的独立语音 WebSocket，也不把 `minicpm` 放入语音输出模型链。
+> 需要语音时应在 `modalities.output.audio.models` 中选择 Piper 或 MiniMax。不要把任意最终文本直接发送到
 > `/v1/audio/speech/stream`。
 
 当前方案在 RTX 3090 24GB 上运行 `MiniCPM-o-4_5-AWQ`，由 vLLM-Omni 的三个阶段完成

@@ -2,21 +2,32 @@
 
 ## 安全原则
 
-模型只能请求工具，不能直接访问 `rclpy`、发布任意 topic 或构造底盘控制消息。只有注册进
-`ToolRegistry` 的工具才能执行。工具注册表是程序白名单，提示词中的工具列表只是辅助约束。
-Skill 同样不能绕过该注册表；它只把高层任务转换成一个或多个 Tool 调用。
+模型只能请求工具，不能直接访问 `rclpy`、发布任意 topic 或构造底盘控制消息。只有 Agent Server
+唯一 `ToolRegistry` 中的工具才能执行。生产环境的动作 Tool 通过 `RosRobotToolClient` 调用树莓派
+`robot_tool_gateway`；Gateway Handler 不是第二套 Agent Tool 注册表，并会执行参数二次校验。
 
 当前工具：
 
 | 工具 | 类型 | 状态 |
 | --- | --- | --- |
 | `get_robot_status` | 只读 | 已注册；ROS 网关尚未接入时返回 `available=false` |
-| `move_relative` | 声明式动作 | 距离范围 -2～2 m，绝对值至少 0.05 m |
-| `rotate_relative` | 声明式动作 | 模型使用 `left/right`；下发时正数左转、负数右转 |
-| `stop_motion` | 声明式动作 | 请求树莓派取消当前 Nav2 Action |
+| `move_relative` | 实车动作 | 距离范围 -2～2 m，绝对值至少 0.05 m |
+| `rotate_relative` | 实车动作 | 模型使用 `left/right`；下发时正数左转、负数右转 |
+| `stop_motion` | 实车动作 | 请求树莓派取消当前 Nav2 Action |
+| `set_camera_pan` | 实车动作 | 水平云台范围 -90～90° |
+| `set_camera_tilt` | 实车动作 | 俯仰云台范围 -45～45° |
+| `capture_camera` | 只读 | 返回树莓派缓存的最新压缩相机画面 |
 
-动作工具只生成 `small_car.motion.v1` JSON，不在 Agent Server 发布速度或访问 Nav2。树莓派
-`agent_client` 会拒绝未知字段和越界数值，再调用 Nav2 的 `DriveOnHeading` 或 `Spin` Action。
+生产环境动作 Tool 返回 `small_car.tool_result.v1`，表示树莓派已经真实执行；最终响应不再携带
+`robot_task`，因此 `agent_client` 不会二次执行。没有注入 RobotToolClient 的离线单元测试仍保留
+`small_car.motion.v1` 声明式兼容路径。Agent Server 始终不能发布速度或直接访问 Nav2。
+
+所有动态 Skill 共用 `runtime/agent_loop.py`，执行“观察 → 决策 → 单个 Tool → 新观察”的循环。
+Skill 只声明目标、工具白名单、任务说明和预算，不再为每种功能增加执行节点。每一步依次经过
+`ToolPolicy`、唯一 `ToolRegistry` 和 Pi Gateway，不允许模型直接访问 ROS。
+
+动态 Skill 位于 `llm_agent/skills/<skill_name>/SKILL.yaml`。Agent 启动时只扫描这一层目录，完成
+Schema、模板参数、工具白名单和任务预算校验后自动注册；增加动态任务不需要新增 Python 文件。
 模型侧旋转参数使用显式 `direction` 和正数角度大小，工具层再转换为下发协议的带符号角度。解析器
 优先接受标准 JSON，并通过 `ast.literal_eval` 安全兼容 MiniCPM 的单引号字典输出；不会执行模型代码。
 旧输出只有在 `reason` 中包含唯一明确的“左转”或“右转”时才会补齐方向；方向缺失或矛盾时拒绝
@@ -111,7 +122,7 @@ Skill 同样不能绕过该注册表；它只把高层任务转换成一个或�
 1. 在对应领域目录定义严格的参数模型；
 2. 实现工具并通过受控 gateway 访问外部系统；
 3. 在应用装配处显式注册；
-4. 更新 `prompts/intent.txt` 中允许的工具；
+4. 确认 `prompts/agent_loop.txt` 中的通用决策约束仍覆盖该工具；
 5. 添加合法、非法参数、超时和外部失败测试；
 6. 动作工具还必须通过后续安全策略，并先在仿真环境验证。
 
@@ -127,9 +138,8 @@ topic/service/action 名称。
 
 ## 新增 Skill 流程
 
-1. 在 `skills/<domain>/` 或独立模块中定义严格的高层参数模型；
-2. 实现 `name`、`description`、`arguments_model` 和 `plan(arguments)`；
-3. 让 `plan` 只返回已存在的 `ToolCall`，不得直接访问 ROS 或硬件；
-4. 在 `runtime/factory.py` 中显式注册，并更新意图提示词；
-5. 测试 Skill 参数、每个 Tool 步骤、整体拒绝和取消行为；
-6. 新任务协议必须同步更新树莓派解析器，并保留设备侧第二次安全校验。
+1. 新建 `skills/<skill_name>/SKILL.yaml`；
+2. 声明参数、目标模板、任务规则、`allowed_tools` 和预算；
+3. 重启 Agent，由 Loader 自动扫描并校验；
+4. 测试参数、工具权限、预算、取消和失败行为；
+5. 只有新增原子硬件能力时才增加 Tool 和 Robot Gateway Handler。

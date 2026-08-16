@@ -5,11 +5,14 @@
 re-export。
 """
 
-from .capabilities import GenerationCapabilities, SpeechCapabilities
-from .protocol import AsrBackend, GenerationBackend, ModelBackend, SpeechBackend
-from .types import (
+from .protocol import (
+    AsrBackend,
+    GenerationBackend,
+    GenerationCapabilities,
     ModelRequest,
     ModelResponse,
+    SpeechBackend,
+    SpeechCapabilities,
     SpeechRequest,
     SpeechResponse,
     TranscriptionRequest,
@@ -20,7 +23,6 @@ __all__ = [
     "GenerationBackend",
     "AsrBackend",
     "GenerationCapabilities",
-    "ModelBackend",
     "ModelRequest",
     "ModelResponse",
     "SpeechBackend",

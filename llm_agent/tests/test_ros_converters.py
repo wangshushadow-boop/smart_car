@@ -5,7 +5,7 @@ import unittest
 from small_car_interfaces.msg import AgentContent, AgentRequest
 
 from llm_agent.runtime import ContentPart, ContentType, RuntimeResponse
-from llm_agent.transport.ros.converters import request_from_ros, response_to_ros
+from llm_agent.transport.ros.run_agent_server import request_from_ros, response_to_ros
 
 
 class RosConvertersTest(unittest.TestCase):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from llm_agent.conversation import (
+from llm_agent.sessions import (
     InMemoryConversationStore,
     format_conversation_history,
 )

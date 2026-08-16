@@ -1,136 +1,114 @@
 # Agent 架构
 
-## 边界
+## 总体边界
 
-`llm_agent` 是 ROS 网络中的统一 Agent 服务端，负责多模态理解、白名单工具、回复生成和可选语音合成。
-它不采集麦克风、不读取摄像头设备、不播放扬声器，也不包含调试网页。
+`llm_agent` 采用面向单台机器人的精简 Gateway 架构。所有调用端继续使用统一
+`/car/agent/run` ROS Action；内部生产路径为：
 
 ```text
-树莓派 Agent Client ─┐
-                    ├── /car/agent/run（RunAgent Action）
-独立 Web Debug ─────┘
-                              ↓
-                     transport/ros
-                              ↓
-                         runtime
-                              ↓
-          agent / skills / models / tools / speech
+树莓派语音 / Web Debug / CLI
+              ↓
+         AgentGateway
+      幂等 + 同 Session 串行
+              ↓
+         AgentRuntime
+      领域契约 + Session 持久化
+              ↓
+          AgentLoop
+   Prompt → Model → Tool → Observation
+        ↓                 ↓
+  SkillRegistry       ToolPolicy
+                          ↓
+                    ToolRegistry
+                          ↓
+                  RobotToolClient
+                          ↓
+             树莓派 Robot Tool Gateway
+                          ↓
+                  ROS / Nav2 / MCU
 ```
 
-所有外部调用方使用同一 Action。`AgentRuntime` 只接收纯 Python `RuntimeRequest`，不导入 ROS、HTTP、
-浏览器或设备代码。
+Agent Server 不采集设备、不发布 `/cmd_vel`、不直接访问 Nav2。麦克风、相机
+聚合和扬声器播放属于树莓派 `agent_client`；真实动作与硬限制属于
+`robot_tool_gateway`。
 
-## 目录职责
+## 模块职责
 
-| 目录 | 职责 |
+| 模块 | 单一职责 |
 | --- | --- |
-| `runtime/` | 统一全模态契约、串行执行、取消、进度和响应转换 |
-| `conversation/` | 按 `session_id` 隔离的短期多轮上下文及内存存储接口 |
-| `transport/ros/` | `RunAgent` Action Server 以及 ROS/Runtime 类型转换 |
-| `agent/` | LangGraph、共享状态、意图、安全、工具和回复节点 |
-| `skills/` | 高层任务接口、注册表和由多个白名单 Tool 组成的任务计划 |
-| `models/` | Provider 无关接口、能力声明，以及生成、ASR、语音模型实现与输出校验 |
-| `tools/` | 强类型工具协议、白名单和执行超时 |
-| `prompts/` | 版本化系统、意图、回复和安全提示词 |
-| `app/` | `agent.yaml`/`models.yaml` 配置加载和 ROS Agent Server 进程入口 |
-| `tests/` | Runtime、Graph、Provider 和 ROS 转换单元测试 |
+| `gateway/` | 请求幂等、同 Session 串行和 Runtime 生命周期 |
+| `runtime/agent_loop.py` | 模型—工具—观察循环、Runtime 生命周期与依赖装配 |
+| `runtime/prompt_builder.py` | 组装请求、历史、Skill、Tool 和观察上下文 |
+| `sessions/` | SQLite 对话、任务和执行事件持久化 |
+| `skills/` | 固定计划 Skill、目录扫描和动态任务声明 |
+| `tools/policy.py` | 工具授权、时间、步骤及运动预算 |
+| `tools/registry.py` | 工具唯一注册、参数校验、超时和执行 |
+| `models/` | 生成、ASR、TTS Provider 与能力声明 |
+| `transport/ros/` | ROS Action 与领域契约转换 |
+| `app/` | 配置、依赖装配和进程生命周期 |
 
-调试网页位于仓库顶层 `agent_debug_web/`，不属于 Agent 服务实现。
+## 统一 Agent Loop
 
-## 依赖方向
+入站附件首先按 `models.yaml` 的 `input` 属性做能力判断。主模型原生支持时直接
+传入；否则按 `agent.yaml` 的 `modalities.input.audio/image/video.models` 有序回退并转换为
+带来源标记的文字块。媒体超过限制、路由禁用或全部 Provider 失败都会显式终止
+本轮，不允许静默丢弃。
 
-模型与 Agent 遵循单向依赖，禁止 Provider 反向引用 Agent 状态：
+模型每轮只能返回三种结构之一：
 
-```text
-models.yaml
-    ↓
-models/registry.py ──创建──> Generation / ASR / Speech 协议实现
-    ↓                                  ↓
-runtime/factory.py ───────显式注入────> agent/graph.py
+```json
+{"type":"tool_call","tool_name":"capture_camera","arguments":{}}
 ```
 
-`agent/graph.py` 不实例化具体模型；所有模型选择和装配统一由
-`runtime/factory.py` 完成。`models/response_parser.py` 只解析通用 JSON 对象，
-车辆意图、方向和安全规则属于 `agent/`。
-
-模型进程同样独立于 Agent：`scripts/start_models.py` 只读取 `models.yaml` 中
-`deployment.command` 的参数数组并管理进程及健康检查，不导入模型实现，也不读取
-`agent.yaml`。新增可执行模型服务只需要增加配置，不需要修改启动器分支。
-
-## 统一全模态请求
-
-`RuntimeRequest.inputs` 是内容块数组，支持：
-
-- `text`：自然语言或其他文本；
-- `audio`：WAV 等音频；
-- `image`：JPEG、PNG 等压缩图像；
-- `video`：MP4 等视频；
-- `json`：结构化上下文。
-
-小型媒体通过 `data` 内联；接口同时预留 `uri` 和 `topic`。当前 Runtime 可以处理内联数据和 URI，实时
-topic 引用必须先由客户端聚合成一次请求。默认内联总大小限制为 64 MiB。
-
-`response_modalities` 声明期望输出。当前图始终返回文本；请求包含 `audio` 时再调用配置的 Speech
-Provider。统一响应协议已支持文本、音频、图片和视频，实际生成能力由 Provider 能力声明决定。
-
-## LangGraph
-
-```text
-START
-  ↓
-understand_intent
-  ├── query/action + tool ─→ safety_check ─→ execute_tool ─┐
-  ├── skill ─→ skill_safety_check ─→ execute_skill ────────┤
-  └── 其他意图 ─────────────────────────────────────────────┤
-                                                   ↓
-                                          generate_response
-                                                   ↓
-                                          synthesize_speech
-                                                   ↓
-                                                  END
+```json
+{"type":"skill_call","skill_name":"find_object","arguments":{"target_name":"水瓶"}}
 ```
 
-一轮通常包含一次意图识别和一次回复生成。动作请求、取消意图和无法识别请求使用确定性回答。工具调用还
-必须同时满足请求允许工具、工具已注册和参数校验通过。
+```json
+{"type":"final","status":"completed","answer":"已经找到水瓶。"}
+```
+
+循环每次只执行一个原子 Tool。执行结果、错误和 Robot Gateway 返回的新图片
+写入轨迹，下一轮模型必须基于真实 Observation 再决定。动态 Skill 执行期间
+不能切换到另一个 Skill。
 
 ## Skill 与 Tool
 
-Tool 是单次、强类型的原子能力；Skill 是完成一类复合任务的确定性编排。Skill 不直接访问 ROS、
-Nav2 或硬件，而是先生成 `SkillPlan`，其中每一步仍是 `ToolCall`。计划中的全部 Tool 都通过注册表
-白名单和 Pydantic 参数校验后，才能生成下发任务；任一步无效时整份计划都不会下发。
+动态 Skill 位于 `skills/<name>/SKILL.yaml`。启动时扫描并校验名称、参数模板、
+工具白名单和任务预算；Prompt 只常驻 Skill 名称与摘要，选择后才生成完整
+`RobotTask`。增加动态任务不需要 Python 文件或 Graph 节点。
 
-当前首个 Skill 是 `motion_sequence`，用于编排 2～8 个明确的直线和旋转步骤。单步运动继续直接调用
-`move_relative` 或 `rotate_relative`，避免为简单动作增加额外层级。模型意图阶段只注入 Skill 名称和
-简短说明，详细参数约束保留在提示词和代码模型中，避免未来 Skill 增多后把所有完整说明常驻上下文。
+Tool 是强类型原子能力，只能在 `runtime/agent_loop.py` 注册一次。有效工具集合为：
 
-组合任务通过 `small_car.motion_sequence.v1` 下发。树莓派 `agent_client` 会再次逐步校验距离、角度、
-字段和 schema，再按 Nav2 Action 的结果串行执行；任一步失败或取消都会清空剩余步骤。实时避障、轨迹
-闭环和急停仍由 Nav2、Collision Monitor、底盘及 MCU 负责，而不是由 LLM 循环控制。
-
-## 短期多轮上下文
-
-`AgentRuntime` 在执行前根据 `session_id` 读取最近对话，在完成后写入本轮用户摘要和 Agent 文字回答。
-默认使用 `conversation/InMemoryConversationStore`，按轮数、字符数、TTL 和最大会话数限制内存；服务
-重启后自动清空。Web 默认使用 `web-debug`，树莓派在 Client 进程启动时生成独立 session，因此两端默认
-不会混用历史。
-
-历史只注入 `generate_response`，不会注入 `understand_intent`。这条边界保证“继续”“再来一次”等表达
-不能从历史中继承距离或角度触发实车动作。文字请求保存原文；纯语音请求只保存意图模型的 `reason`
-摘要，不保存 WAV、图片或视频二进制。`AgentRuntime.clear_conversation(session_id)` 可清空指定会话。
-
-默认配置：
-
-```yaml
-runtime:
-  conversation_enabled: true
-  conversation_max_turns: 8
-  conversation_max_context_chars: 12000
-  conversation_ttl_seconds: 1800
-  conversation_max_sessions: 128
+```text
+全局 ToolRegistry ∩ Skill allowed_tools ∩ 请求 allow_tools ∩ ToolPolicy
 ```
 
-## 并发和取消
+Server 策略只能收紧权限。距离、旋转、舵机角度、Nav2 超时和急停仍由树莓派
+Gateway 进行不可绕过的第二次校验。
 
-ROS Action Server 可以同时接收多个 Goal，Runtime 使用锁串行访问模型，防止本地 GPU 被并发请求压垮。
-排队请求可以在执行前取消；运行中的工具观察每个请求独立的取消令牌。已经发出的同步模型 HTTP 调用可能
-要等当前调用返回后才能结束，但取消后不会继续后续业务步骤。
+## Session
+
+生产默认使用 `~/.local/state/smart_car/agent_sessions.sqlite3`，保存：
+
+- 按 `session_id` 隔离的文字对话；
+- 每次 `request_id` 对应的任务状态；
+- Skill/Tool 结构化执行轨迹；
+- 完成、取消或部分失败状态。
+
+音频、图片和视频原文不写入 SQLite。Gateway 对同一 Session 串行执行，并对
+已完成的 `request_id` 返回进程内缓存结果，防止客户端重试造成重复动作。
+
+## 取消和安全
+
+ROS Action Cancel 写入本轮 `cancel_token`。AgentLoop 在每个模型轮次和 Tool
+执行前检查取消；RobotToolClient 会取消正在执行的 ROS Action。同步模型 HTTP
+请求可能需要等当前调用返回，但取消后不会开始下一步动作。
+
+安全链路固定为：
+
+```text
+模型决策 → Skill 权限 → ToolPolicy → Pydantic 参数 → Robot Gateway → Nav2/MCU
+```
+
+任意一层拒绝都会停止后续执行。
