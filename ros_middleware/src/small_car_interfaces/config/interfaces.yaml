@@ -26,6 +26,14 @@
 version: 2
 
 services:
+  # 树莓派和 Web 提交一轮完整输入；只等待 DialogueLoop 快速决策。
+  # 长 Skill 由 TaskManager 后台运行，因此 Service 不承担进度和取消语义。
+  agent_run:
+    name: /car/agent/run
+    type: small_car_interfaces/srv/RunAgent
+    server: llm_agent
+    clients: [robot_host/agent_client, agent_debug_web]
+
   # Agent Server 合成最终语音后直接提交到树莓派后台播放器。
   # 响应只确认播放器已接收，不等待整段音频播放完成。
   audio_enqueue:
@@ -35,14 +43,6 @@ services:
     clients: [llm_agent/audio_output_client]
 
 actions:
-  # Web、树莓派和其他调用方访问 Agent 的唯一全模态业务接口。
-  # Goal、Feedback 和 Result 分别承载统一请求、进度和统一响应。
-  agent_run:
-    name: /car/agent/run
-    type: small_car_interfaces/action/RunAgent
-    server: llm_agent
-    clients: [robot_host/agent_client, agent_debug_web]
-
   # Agent Server 通过此内部 Action 请求树莓派执行严格受限的原子工具。
   # Gateway 对每个参数做第二次校验，并使用 task_id + step_id 去重。
   robot_tool_execute:

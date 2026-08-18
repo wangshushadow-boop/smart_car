@@ -22,7 +22,7 @@
 `robot_task`，因此 `agent_client` 不会二次执行。没有注入 RobotToolClient 的离线单元测试仍保留
 `small_car.motion.v1` 声明式兼容路径。Agent Server 始终不能发布速度或直接访问 Nav2。
 
-所有动态 Skill 共用 `runtime/agent_loop.py`，执行“观察 → 决策 → 单个 Tool → 新观察”的循环。
+所有动态 Skill 共用 `runtime/skill_runner.py`，执行“观察 → 决策 → 单个 Tool → 新观察”的循环。
 Skill 只声明目标、工具白名单、任务说明和预算，不再为每种功能增加执行节点。每一步依次经过
 `ToolPolicy`、唯一 `ToolRegistry` 和 Pi Gateway，不允许模型直接访问 ROS。
 
@@ -122,7 +122,7 @@ Schema、模板参数、工具白名单和任务预算校验后自动注册；�
 1. 在对应领域目录定义严格的参数模型；
 2. 实现工具并通过受控 gateway 访问外部系统；
 3. 在应用装配处显式注册；
-4. 确认 `prompts/agent_loop.txt` 中的通用决策约束仍覆盖该工具；
+4. 确认 `prompts/skill_runner.txt` 中的通用决策约束仍覆盖该工具；
 5. 添加合法、非法参数、超时和外部失败测试；
 6. 动作工具还必须通过后续安全策略，并先在仿真环境验证。
 

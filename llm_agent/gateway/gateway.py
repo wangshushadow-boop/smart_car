@@ -1,7 +1,7 @@
 """所有调用端进入 llm_agent 的统一 Gateway。
 
 Gateway 不理解模型、Skill 或 ROS 业务，只负责请求幂等、同 Session 串行、
-生命周期和取消令牌透传。ROS Action、Web 或 CLI Adapter 均应依赖本接口。
+生命周期和取消令牌透传。ROS Service、Web 或 CLI Adapter 均应依赖本接口。
 """
 
 from __future__ import annotations

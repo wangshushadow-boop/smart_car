@@ -71,7 +71,7 @@ docker compose exec small_car_ros2 bash -lc '
   ros2 topic hz /wheel/odom_raw
   ros2 node info /car_agent_client
   ros2 topic hz /car/camera/image/compressed
-  ros2 action info /car/agent/run
+  ros2 service type /car/agent/run
   ros2 action info /car/agent/tool_execute
   ros2 topic echo /diagnostics --once
 '

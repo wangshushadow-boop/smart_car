@@ -12,7 +12,7 @@ string message
 string result_json
 small_car_interfaces/AgentContent[] observations
 ---
-# 执行阶段反馈，用于透传到底层 RunAgent Action。
+# 执行阶段反馈，供后台 SkillRunner 观察长 Tool 的执行进度。
 string stage
 uint8 percent
 string message

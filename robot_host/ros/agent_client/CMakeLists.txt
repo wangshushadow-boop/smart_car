@@ -8,7 +8,6 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclcpp_action REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(small_car_interfaces REQUIRED)
 
@@ -23,7 +22,7 @@ add_subdirectory(
 add_executable(agent_client_node
   src/main.cpp
   src/agent_client_node.cpp
-  src/agent_action_client.cpp
+  src/agent_service_client.cpp
   src/camera_sampler.cpp
   src/response_player.cpp
   src/utterance_buffer.cpp
@@ -33,7 +32,6 @@ target_include_directories(agent_client_node PRIVATE include)
 target_link_libraries(agent_client_node PRIVATE
   robot_host_audio
   rclcpp::rclcpp
-  rclcpp_action::rclcpp_action
   sensor_msgs::sensor_msgs_library
   ${small_car_interfaces_TARGETS}
 )

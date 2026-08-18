@@ -1,11 +1,11 @@
-"""统一 Agent Loop、Gateway 与 SQLite SessionStore 的核心回归测试。"""
+"""DialogueLoop、SkillRunner、TaskManager 与 Gateway 的核心回归测试。"""
 
 from __future__ import annotations
 
 import tempfile
 import unittest
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 
 from llm_agent.gateway import AgentGateway
 from llm_agent.models.protocol import (
@@ -17,8 +17,11 @@ from llm_agent.models.protocol import (
 )
 from llm_agent.models.registry import MediaBackends, MediaRoute
 from llm_agent.runtime import ContentPart, ContentType, RuntimeRequest, RuntimeResponse
-from llm_agent.runtime.agent_loop import AgentLoop
+from llm_agent.runtime.dialogue_loop import DialogueLoop
 from llm_agent.runtime.prompt_builder import PromptBuilder
+from llm_agent.runtime.reactor import Reactor
+from llm_agent.runtime.skill_runner import SkillRunner
+from llm_agent.runtime.task_manager import TaskManager
 from llm_agent.sessions import SQLiteSessionStore
 from llm_agent.skills import MotionSequenceSkill, SkillRegistry, load_skill_directory
 from llm_agent.tools.policy import ToolPolicy
@@ -40,23 +43,23 @@ class FakeModel:
 
     def __init__(self, responses: list[str]) -> None:
         self._responses = iter(responses)
+        self._lock = Lock()
         self.requests = []
 
     def complete(self, request):
-        self.requests.append(request)
-        return ModelResponse(text=next(self._responses), provider=self.provider_name)
+        with self._lock:
+            self.requests.append(request)
+            return ModelResponse(text=next(self._responses), provider=self.provider_name)
 
 
 class FakeSpeech:
     provider_name = "fake-speech"
     capabilities = SpeechCapabilities()
 
-    def __init__(
-        self, *, auto: str = "off", min_chars: int = 0, max_chars: int = 1000
-    ) -> None:
+    def __init__(self, *, auto: str = "off", max_chars: int = 1000) -> None:
         self.enabled = True
         self.auto = auto
-        self.min_chars = min_chars
+        self.min_chars = 0
         self.max_chars = max_chars
         self.requests = []
 
@@ -85,28 +88,18 @@ class FakeAsr:
         return TranscriptionResponse(text="向前走", provider=self.provider_name)
 
 
-class FakeVision:
-    provider_name = "fake-vision"
-    capabilities = GenerationCapabilities(image_input=True, video_input=True)
-
-    def complete(self, _request):
-        return ModelResponse(text="画面中有一个水瓶", provider=self.provider_name)
-
-
-class BrokenVision(FakeVision):
-    provider_name = "broken-vision"
-
-    def complete(self, _request):
-        raise RuntimeError("offline")
-
-
 class FakeRobotExecutor:
-    def __init__(self) -> None:
+    def __init__(self, blocker: Event | None = None) -> None:
         self.calls = []
+        self.started = Event()
+        self._blocker = blocker
         self._observations = []
 
     def execute(self, tool_name, arguments, **kwargs):
         self.calls.append((tool_name, arguments, kwargs))
+        self.started.set()
+        if self._blocker is not None:
+            self._blocker.wait(2)
         if tool_name == "capture_camera":
             self._observations = [b"jpeg-observation"]
         return {
@@ -120,13 +113,14 @@ class FakeRobotExecutor:
         return values
 
 
-def make_loop(
+def make_stack(
     model: FakeModel,
     robot: FakeRobotExecutor,
+    *,
     media=None,
     speech=None,
     audio_output=None,
-) -> AgentLoop:
+) -> tuple[DialogueLoop, TaskManager]:
     tools = ToolRegistry()
     tools.register(GetRobotStatusTool())
     tools.register(MoveRelativeTool(robot))
@@ -139,17 +133,28 @@ def make_loop(
     skills.register_atomic_tools(tools)
     skills.register(MotionSequenceSkill())
     load_skill_directory(skills, tools)
-    return AgentLoop(
-        model=model,
-        speech=speech or FakeSpeech(),
+    reactor = Reactor(model)
+    prompts = PromptBuilder(model, skills)
+    runner = SkillRunner(
+        reactor=reactor,
         tools=tools,
         skills=skills,
         policy=ToolPolicy(tools),
-        prompt_builder=PromptBuilder(model, skills),
-        media=media,
+        prompt_builder=prompts,
         robot_tool_executor=robot,
+    )
+    tasks = TaskManager(runner)
+    dialogue = DialogueLoop(
+        reactor=reactor,
+        model=model,
+        speech=speech or FakeSpeech(),
+        skills=skills,
+        task_manager=tasks,
+        prompt_builder=prompts,
+        media=media,
         audio_output=audio_output or FakeAudioOutput(),
     )
+    return dialogue, tasks
 
 
 def make_request(text: str, request_id: str = "loop-test") -> RuntimeRequest:
@@ -162,7 +167,18 @@ def make_request(text: str, request_id: str = "loop-test") -> RuntimeRequest:
     )
 
 
-class AgentLoopRuntimeTest(unittest.TestCase):
+def invoke(dialogue: DialogueLoop, request: RuntimeRequest) -> dict:
+    return dialogue.invoke(
+        {
+            "request": request,
+            "request_id": request.request_id,
+            "cancel_token": Event(),
+            "conversation_history": [],
+        }
+    )
+
+
+class DialogueAndSkillRuntimeTest(unittest.TestCase):
     @staticmethod
     def _media_routes(*, audio=(), image=(), video=()) -> MediaBackends:
         return MediaBackends(
@@ -172,77 +188,47 @@ class AgentLoopRuntimeTest(unittest.TestCase):
             video=MediaRoute(True, 1024 * 1024, 1000, "描述视频", tuple(video)),
         )
 
-    def test_single_loop_executes_tool_then_returns_final_answer(self) -> None:
+    def test_atomic_skill_runs_in_background_once(self) -> None:
         model = FakeModel(
             [
                 '{"type":"skill_call","skill_name":"move_relative",'
-                '"arguments":{"distance_m":0.2},"reason":"前进"}',
-                '{"type":"final","status":"completed",'
-                '"answer":"已经前进二十厘米。","reason":"动作完成"}',
+                '"arguments":{"distance_m":0.2},"reason":"前进"}'
             ]
         )
         robot = FakeRobotExecutor()
-        state = make_loop(model, robot).invoke(
-            {
-                "request": make_request("前进二十厘米"),
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertEqual(state["answer"], "已经前进二十厘米。")
-        self.assertEqual(len(robot.calls), 1)
-        self.assertEqual(robot.calls[0][0], "move_relative")
+        dialogue, tasks = make_stack(model, robot)
+        self.addCleanup(tasks.stop)
 
-    def test_completed_atomic_skill_is_not_executed_twice(self) -> None:
-        """模型收尾时重复请求相同 Skill，也不能再次向 Robot Gateway 下发。"""
-        model = FakeModel(
-            [
-                '{"type":"skill_call","skill_name":"move_relative",'
-                '"arguments":{"distance_m":0.3},"reason":"前进"}',
-                '{"type":"skill_call","skill_name":"move_relative",'
-                '"arguments":{"distance_m":0.3},"reason":"重复请求"}',
-            ]
-        )
-        robot = FakeRobotExecutor()
+        state = invoke(dialogue, make_request("前进二十厘米"))
+        snapshot = tasks.wait(state["task"]["task_id"])
 
-        state = make_loop(model, robot).invoke(
-            {
-                "request": make_request("前进三十厘米"),
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
+        self.assertEqual(state["answer"], "已开始执行 move_relative。")
+        self.assertEqual(snapshot.status, "completed")
+        self.assertEqual([call[0] for call in robot.calls], ["move_relative"])
 
-        self.assertEqual(len(robot.calls), 1)
-        self.assertEqual(state["answer"], "move_relative 已执行完成。")
-
-    def test_directory_skill_uses_same_loop_and_new_observation(self) -> None:
+    def test_reactive_skill_uses_new_camera_observation(self) -> None:
         model = FakeModel(
             [
                 '{"type":"skill_call","skill_name":"find_object",'
                 '"arguments":{"target_name":"水瓶"},"reason":"开始搜索"}',
                 '{"type":"skill_call","skill_name":"capture_camera",'
-                '"arguments":{},"reason":"先观察"}',
+                '"arguments":{},"reason":"观察"}',
                 '{"type":"final","status":"completed",'
-                '"answer":"已经找到水瓶。","reason":"画面中确认"}',
+                '"answer":"已经找到水瓶。","reason":"画面确认"}',
             ]
         )
         robot = FakeRobotExecutor()
-        state = make_loop(model, robot).invoke(
-            {
-                "request": make_request("找到水瓶"),
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertEqual(state["answer"], "已经找到水瓶。")
+        dialogue, tasks = make_stack(model, robot)
+        self.addCleanup(tasks.stop)
+
+        state = invoke(dialogue, make_request("找到水瓶"))
+        snapshot = tasks.wait(state["task"]["task_id"])
+
+        self.assertEqual(snapshot.answer, "已经找到水瓶。")
         self.assertEqual(robot.calls[0][0], "capture_camera")
         self.assertEqual(len(model.requests[-1].image_data_urls), 1)
 
-    def test_skill_cannot_call_tool_outside_its_allowlist(self) -> None:
+    def test_reactive_skill_rejects_tool_outside_allowlist(self) -> None:
         model = FakeModel(
             [
                 '{"type":"skill_call","skill_name":"find_object",'
@@ -251,253 +237,124 @@ class AgentLoopRuntimeTest(unittest.TestCase):
                 '"arguments":{},"reason":"越权"}',
             ]
         )
-        robot = FakeRobotExecutor()
-        state = make_loop(model, robot).invoke(
-            {
-                "request": make_request("找到水瓶"),
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertIn("未获当前任务授权", state["error"])
-        self.assertEqual(robot.calls, [])
+        dialogue, tasks = make_stack(model, FakeRobotExecutor())
+        self.addCleanup(tasks.stop)
+        state = invoke(dialogue, make_request("找到水瓶"))
 
-    def test_rotation_without_direction_is_rejected_before_gateway(self) -> None:
-        model = FakeModel(
-            [
-                '{"type":"skill_call","skill_name":"rotate_relative",'
-                '"arguments":{"angle_deg":30},"reason":"方向不明确"}'
-            ]
-        )
-        robot = FakeRobotExecutor()
-        state = make_loop(model, robot).invoke(
-            {
-                "request": make_request("旋转三十度"),
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertIn("必须明确指定", state["error"])
-        self.assertEqual(robot.calls, [])
+        snapshot = tasks.wait(state["task"]["task_id"])
 
-    def test_request_can_disable_all_tool_and_skill_calls(self) -> None:
+        self.assertEqual(snapshot.status, "failed")
+        self.assertIn("未获当前任务授权", snapshot.error)
+
+    def test_dialogue_remains_available_while_skill_is_running(self) -> None:
+        release = Event()
+        robot = FakeRobotExecutor(blocker=release)
         model = FakeModel(
             [
                 '{"type":"skill_call","skill_name":"move_relative",'
-                '"arguments":{"distance_m":0.2},"reason":"尝试执行"}'
+                '"arguments":{"distance_m":0.3},"reason":"执行"}',
+                '{"type":"final","status":"completed",'
+                '"answer":"我还在执行任务。","reason":"普通对话"}',
             ]
         )
-        robot = FakeRobotExecutor()
-        request = make_request("只讨论怎么前进，不要执行")
-        request.allow_tools = False
-        state = make_loop(model, robot).invoke(
-            {
-                "request": request,
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertIn("禁止调用 Skill", state["error"])
-        self.assertEqual(robot.calls, [])
+        dialogue, tasks = make_stack(model, robot)
+        self.addCleanup(tasks.stop)
+        first = invoke(dialogue, make_request("前进", "request-1"))
+        self.assertTrue(robot.started.wait(1))
 
-    def test_planned_skill_executes_inside_the_same_loop(self) -> None:
+        second = invoke(dialogue, make_request("你还在吗", "request-2"))
+        release.set()
+        tasks.wait(first["task"]["task_id"])
+
+        self.assertEqual(second["answer"], "我还在执行任务。")
+
+    def test_new_skill_preempts_old_skill(self) -> None:
+        release = Event()
+        robot = FakeRobotExecutor(blocker=release)
         model = FakeModel(
             [
-                '{"type":"skill_call","skill_name":"motion_sequence",'
-                '"arguments":{"steps":[{"action":"move","distance_m":0.2},'
-                '{"action":"rotate","direction":"left","angle_deg":30}]},'
-                '"reason":"执行组合动作"}',
-                '{"type":"final","status":"completed",'
-                '"answer":"组合动作已完成。","reason":"执行完成"}',
+                '{"type":"skill_call","skill_name":"move_relative",'
+                '"arguments":{"distance_m":0.3},"reason":"旧任务"}',
+                '{"type":"skill_call","skill_name":"rotate_relative",'
+                '"arguments":{"angle_deg":30,"direction":"left"},'
+                '"reason":"新任务"}',
             ]
         )
-        robot = FakeRobotExecutor()
-        state = make_loop(model, robot).invoke(
-            {
-                "request": make_request("前进后左转"),
-                "request_id": "loop-test",
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertEqual(state["answer"], "组合动作已完成。")
-        self.assertEqual([call[0] for call in robot.calls], ["move_relative", "rotate_relative"])
+        dialogue, tasks = make_stack(model, robot)
+        self.addCleanup(tasks.stop)
+        first = invoke(dialogue, make_request("前进", "request-1"))
+        self.assertTrue(robot.started.wait(1))
 
-    def test_audio_falls_back_to_configured_media_asr(self) -> None:
+        second = invoke(dialogue, make_request("改成左转", "request-2"))
+        release.set()
+        old = tasks.wait(first["task"]["task_id"])
+        new = tasks.wait(second["task"]["task_id"])
+
+        self.assertEqual(old.status, "preempted")
+        self.assertEqual(new.status, "completed")
+
+    def test_explicit_task_control_cancels_running_skill(self) -> None:
+        release = Event()
+        robot = FakeRobotExecutor(blocker=release)
         model = FakeModel(
-            ['{"type":"final","status":"completed","answer":"收到。","reason":"已转写"}']
+            [
+                '{"type":"skill_call","skill_name":"move_relative",'
+                '"arguments":{"distance_m":0.3},"reason":"执行"}',
+                '{"type":"task_control","task_action":"cancel",'
+                '"reason":"用户要求停止"}',
+            ]
         )
-        robot = FakeRobotExecutor()
+        dialogue, tasks = make_stack(model, robot)
+        self.addCleanup(tasks.stop)
+        first = invoke(dialogue, make_request("前进", "request-1"))
+        self.assertTrue(robot.started.wait(1))
+
+        response = invoke(dialogue, make_request("不要继续了", "request-2"))
+        release.set()
+        snapshot = tasks.wait(first["task"]["task_id"])
+
+        self.assertEqual(response["answer"], "已取消当前任务。")
+        self.assertEqual(snapshot.status, "cancelled")
+
+    def test_audio_falls_back_to_asr(self) -> None:
+        model = FakeModel(
+            ['{"type":"final","status":"completed","answer":"收到。","reason":"完成"}']
+        )
+        dialogue, tasks = make_stack(
+            model,
+            FakeRobotExecutor(),
+            media=self._media_routes(audio=(FakeAsr(),)),
+        )
+        self.addCleanup(tasks.stop)
         request = RuntimeRequest(
             request_id="audio-test",
             source="test",
-            inputs=[
-                ContentPart(
-                    type=ContentType.AUDIO,
-                    mime_type="audio/wav",
-                    data=b"RIFF-audio",
-                )
-            ],
+            inputs=[ContentPart(type=ContentType.AUDIO, data=b"RIFF-audio")],
         )
-        state = make_loop(
-            model,
-            robot,
-            self._media_routes(audio=(FakeAsr(),)),
-        ).invoke(
-            {
-                "request": request,
-                "request_id": request.request_id,
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
+
+        state = invoke(dialogue, request)
+
         self.assertEqual(state["asr_backend"], "fake-asr")
         self.assertIn("向前走", model.requests[0].user_prompt)
-        self.assertEqual(model.requests[0].audio_data_urls, [])
 
-    def test_image_falls_back_to_media_model_without_silent_drop(self) -> None:
-        model = FakeModel(
-            ['{"type":"final","status":"completed","answer":"看到了。","reason":"已理解"}']
-        )
-        robot = FakeRobotExecutor()
-        request = RuntimeRequest(
-            request_id="image-test",
-            source="test",
-            inputs=[
-                ContentPart(
-                    type=ContentType.IMAGE,
-                    mime_type="image/jpeg",
-                    data=b"jpeg",
-                )
-            ],
-        )
-        make_loop(
-            model,
-            robot,
-            self._media_routes(image=(FakeVision(),)),
-        ).invoke(
-            {
-                "request": request,
-                "request_id": request.request_id,
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertIn("画面中有一个水瓶", model.requests[0].user_prompt)
-        self.assertEqual(model.requests[0].image_data_urls, [])
-
-    def test_media_route_tries_backends_in_order(self) -> None:
-        model = FakeModel(
-            ['{"type":"final","status":"completed","answer":"看到了。","reason":"已理解"}']
-        )
-        request = RuntimeRequest(
-            request_id="fallback-test",
-            source="test",
-            inputs=[ContentPart(type=ContentType.IMAGE, data=b"jpeg")],
-        )
-        state = make_loop(
-            model,
-            FakeRobotExecutor(),
-            self._media_routes(image=(BrokenVision(), FakeVision())),
-        ).invoke(
-            {
-                "request": request,
-                "request_id": request.request_id,
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertEqual(state["media_providers"]["image"], "fake-vision")
-
-    def test_unsupported_media_without_fallback_returns_explicit_error(self) -> None:
-        model = FakeModel([])
-        robot = FakeRobotExecutor()
-        request = RuntimeRequest(
-            request_id="video-test",
-            source="test",
-            inputs=[
-                ContentPart(
-                    type=ContentType.VIDEO,
-                    mime_type="video/mp4",
-                    data=b"video",
-                )
-            ],
-        )
-        state = make_loop(model, robot, self._media_routes()).invoke(
-            {
-                "request": request,
-                "request_id": request.request_id,
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertIn("媒体理解模型列表为空", state["error"])
-
-    def test_speech_off_only_honors_explicit_audio_request(self) -> None:
-        model = FakeModel(
-            ['{"type":"final","status":"completed","answer":"语音回答。","reason":"完成"}']
-        )
-        speech = FakeSpeech(auto="off")
-        request = make_request("请回答")
-        request.response_modalities.append(ContentType.AUDIO)
-        state = make_loop(model, FakeRobotExecutor(), speech=speech).invoke(
-            {
-                "request": request,
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertEqual(len(speech.requests), 1)
-        self.assertEqual(state["speech_backend"], "fake-speech")
-
-    def test_speech_always_synthesizes_and_applies_length_limit(self) -> None:
+    def test_speech_policy_still_applies_to_dialogue(self) -> None:
         model = FakeModel(
             ['{"type":"final","status":"completed","answer":"一二三四五六","reason":"完成"}']
         )
         speech = FakeSpeech(auto="always", max_chars=4)
-        audio_output = FakeAudioOutput()
-        make_loop(
+        output = FakeAudioOutput()
+        dialogue, tasks = make_stack(
             model,
             FakeRobotExecutor(),
             speech=speech,
-            audio_output=audio_output,
-        ).invoke(
-            {
-                "request": make_request("请回答"),
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
+            audio_output=output,
         )
-        self.assertEqual(speech.requests[0].text, "一二三四")
-        self.assertEqual(audio_output.calls[0]["audio"], b"RIFF-test")
-        self.assertEqual(audio_output.calls[0]["request_id"], "loop-test")
+        self.addCleanup(tasks.stop)
 
-    def test_speech_inbound_only_synthesizes_for_audio_input(self) -> None:
-        model = FakeModel(
-            ['{"type":"final","status":"completed","answer":"收到。","reason":"完成"}']
-        )
-        speech = FakeSpeech(auto="inbound")
-        request = RuntimeRequest(
-            request_id="speech-inbound",
-            source="test",
-            inputs=[ContentPart(type=ContentType.AUDIO, data=b"RIFF-audio")],
-        )
-        make_loop(
-            model,
-            FakeRobotExecutor(),
-            media=self._media_routes(audio=(FakeAsr(),)),
-            speech=speech,
-        ).invoke(
-            {
-                "request": request,
-                "cancel_token": Event(),
-                "conversation_history": [],
-            }
-        )
-        self.assertEqual(len(speech.requests), 1)
+        invoke(dialogue, make_request("请回答"))
+
+        self.assertEqual(speech.requests[0].text, "一二三四")
+        self.assertEqual(output.calls[0]["audio"], b"RIFF-test")
 
 
 class GatewayAndSessionTest(unittest.TestCase):

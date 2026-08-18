@@ -23,10 +23,10 @@ class RecordingGraph:
             "answer": "好的",
             "generation_backend": "fake-model",
             "speech_backend": "fake-tts",
-            "command": {
-                "schema": "small_car.motion.v1",
-                "action": "move_relative",
-                "distance_m": 1.0,
+            "task": {
+                "task_id": "task-1",
+                "skill_name": "move_relative",
+                "status": "queued",
             },
         }
 
@@ -56,8 +56,8 @@ class RuntimeTest(unittest.TestCase):
             [part.type for part in response.outputs],
             [ContentType.TEXT, ContentType.JSON],
         )
-        self.assertEqual(response.outputs[1].name, "robot_task")
-        self.assertIn('"distance_m":1.0', response.outputs[1].text)
+        self.assertEqual(response.outputs[1].name, "task")
+        self.assertIn('"task_id":"task-1"', response.outputs[1].text)
         self.assertIs(graph.inputs[0]["request"], request)
 
     def test_runtime_honours_request_cancellation(self) -> None:

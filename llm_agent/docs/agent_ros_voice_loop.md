@@ -1,14 +1,14 @@
 # Agent 多模态语音闭环
 
-树莓派负责设备和交互聚合，WSL Agent 只提供统一 Action 服务：
+树莓派负责设备和交互聚合，WSL Agent 提供短 DialogueLoop Service：
 
 ```text
 树莓派麦克风和摄像头
   → 设备侧 VAD + 最近 JPEG
-  → RunAgent Goal（audio/wav + image/jpeg）
-  → WSL AgentRuntime
-  → RunAgent Result（text/plain + 可选 audio/wav）
-  → 树莓派客户端播放音频
+  → RunAgent Service（audio/wav + image/jpeg）
+  → DialogueLoop 快速响应或提交后台 Skill
+  → /car/audio/enqueue 主动下发语音
+  → 树莓派后台播放
 ```
 
 ## 启动顺序
@@ -37,8 +37,8 @@ docker compose -f ros_middleware/docker/compose.yaml up --build -d
 ## 检查
 
 ```bash
-ros2 action list | grep /car/agent/run
-ros2 action info /car/agent/run
+ros2 service list -t | grep /car/agent/run
+ros2 service type /car/agent/run
 ros2 node info /car_agent_client
 ros2 topic hz /car/camera/image/compressed
 ```
@@ -50,7 +50,7 @@ ros2 topic hz /car/camera/image/compressed
 
 | 现象 | 处理 |
 | --- | --- |
-| Action Server 不可用 | 检查两端 `ROS_DOMAIN_ID=0`、DDS 实现和防火墙 |
+| Agent Service 不可用 | 检查两端 `ROS_DOMAIN_ID=0`、DDS 实现和防火墙 |
 | 请求被拒绝 | 检查内容类型、空输入和 64 MiB 内联限制 |
 | 有文字没有声音 | 确认请求包含 `audio` 输出模态并检查 Piper 配置 |
 | MiniMax 拒绝图片或音频 | 当前 MiniMax 文本 Provider 不声明这些输入能力 |

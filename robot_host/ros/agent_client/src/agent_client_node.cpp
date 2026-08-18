@@ -33,8 +33,8 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       "playback_device", capture_config_.device);
   const std::string image_topic =
       declare_parameter<std::string>("image_topic", "");
-  const std::string action_name =
-      declare_parameter<std::string>("agent_action", "");
+  const std::string agent_service_name =
+      declare_parameter<std::string>("agent_service", "");
   const std::string audio_service_name =
       declare_parameter<std::string>("audio_service", "");
   const auto max_playback_bytes =
@@ -47,7 +47,7 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
   request_timeout_ = std::chrono::milliseconds(static_cast<std::int64_t>(
       agent_request_timeout_seconds * 1000.0));
   if (capture_config_.channels != 1 || image_topic.empty() ||
-      action_name.empty() || audio_service_name.empty() ||
+      agent_service_name.empty() || audio_service_name.empty() ||
       max_playback_bytes <= 0) {
     throw std::invalid_argument(
         "Agent Client 需要单声道音频以及有效的 Agent、图像和播放接口");
@@ -73,14 +73,14 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
       playback_device, [this](const std::string& error) {
         RCLCPP_ERROR(get_logger(), "播放 Agent 音频失败：%s", error.c_str());
       });
-  action_client_ = std::make_unique<AgentActionClient>(
-      this, action_name,
+  service_client_ = std::make_unique<AgentServiceClient>(
+      this, agent_service_name,
       [this](const std::string& request_id,
-             AgentActionClient::Response response) {
+             AgentServiceClient::Response response) {
         HandleResponse(request_id, std::move(response));
       },
       [this](const std::string& request_id, const std::string& message) {
-        HandleActionFailure(request_id, message);
+        HandleServiceFailure(request_id, message);
       });
   image_subscription_ = create_subscription<sensor_msgs::msg::CompressedImage>(
       image_topic, rclcpp::SensorDataQoS(),
@@ -100,12 +100,12 @@ AgentClientNode::AgentClientNode() : Node("car_agent_client") {
   session_id_ = "pi-" + std::to_string(now().nanoseconds());
   capture_thread_ = std::thread(&AgentClientNode::CaptureLoop, this);
   RCLCPP_INFO(get_logger(), "C++ Agent Client 已启动：%s，音频服务：%s",
-              action_name.c_str(), audio_service_name.c_str());
+              agent_service_name.c_str(), audio_service_name.c_str());
 }
 
 AgentClientNode::~AgentClientNode() {
   stopping_.store(true);
-  action_client_->Cancel();
+  service_client_->Cancel();
   player_->Stop();
   if (capture_thread_.joinable()) {
     capture_thread_.join();
@@ -193,8 +193,8 @@ void AgentClientNode::FinishUtterance() {
     active_request_id_ = request_id;
     request_deadline_ = std::chrono::steady_clock::now() + request_timeout_;
   }
-  if (!action_client_->Send(request_id, session_id_, std::move(wav),
-                            std::move(jpeg))) {
+  if (!service_client_->Send(request_id, session_id_, std::move(wav),
+                             std::move(jpeg))) {
     CompleteRequest(request_id);
   } else {
     RCLCPP_INFO(get_logger(), "已提交多模态请求：%s",
@@ -203,7 +203,7 @@ void AgentClientNode::FinishUtterance() {
 }
 
 void AgentClientNode::HandleResponse(
-    const std::string& request_id, AgentActionClient::Response response) {
+    const std::string& request_id, AgentServiceClient::Response response) {
   if (!IsActiveRequest(request_id)) {
     RCLCPP_WARN(get_logger(), "忽略已超时请求的迟到响应：%s",
                 request_id.c_str());
@@ -268,8 +268,8 @@ void AgentClientNode::HandlePlayAudio(
   }
 }
 
-void AgentClientNode::HandleActionFailure(const std::string& request_id,
-                                          const std::string& message) {
+void AgentClientNode::HandleServiceFailure(const std::string& request_id,
+                                           const std::string& message) {
   if (!CompleteRequest(request_id)) {
     return;
   }
@@ -287,7 +287,7 @@ void AgentClientNode::CheckRequestTimeout() {
     timed_out_request = std::move(active_request_id_);
     request_active_.store(false);
   }
-  action_client_->Cancel(timed_out_request);
+  service_client_->Cancel(timed_out_request);
   RCLCPP_ERROR(get_logger(),
                "Agent 请求超时，已取消并恢复语音监听：%s（%lld ms）",
                timed_out_request.c_str(),

@@ -1,4 +1,4 @@
-"""本机 Web 调试服务，只通过 ROS Action 访问 Agent。"""
+"""本机 Web 调试服务，只通过 ROS Service 访问 Agent。"""
 
 from __future__ import annotations
 

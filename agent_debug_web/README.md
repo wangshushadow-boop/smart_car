@@ -1,6 +1,6 @@
 # 独立全模态 Agent Web Debug
 
-本模块只通过 `/car/agent/run` ROS 2 Action 调试 Agent，不导入 Runtime、LangGraph、模型、工具或 TTS。
+本模块只通过 `/car/agent/run` ROS 2 Service 调试 Agent，不导入 Runtime、模型、工具或 TTS。
 
 ```bash
 cd /mnt/d/work/smart_car

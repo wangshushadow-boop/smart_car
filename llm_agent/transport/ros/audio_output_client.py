@@ -17,7 +17,7 @@ class RosAudioOutputClient(Node):
         self._timeout_seconds = timeout_seconds
 
     def enqueue(self, *, request_id: str, audio: bytes, mime_type: str) -> None:
-        """把一次最终播报幂等地提交给树莓派播放器。"""
+        """幂等提交播报；播放器忙时短暂重试，但不等待播放结束。"""
         if not self._client.wait_for_service(timeout_sec=1.0):
             raise RuntimeError("树莓派音频播放服务不可用")
         request = PlayAudio.Request()
@@ -26,15 +26,20 @@ class RosAudioOutputClient(Node):
         request.mime_type = mime_type
         request.audio = list(audio)
         request.interrupt_current = False
-        future = self._client.call_async(request)
         deadline = monotonic() + self._timeout_seconds
-        while not future.done():
-            if monotonic() >= deadline:
-                raise RuntimeError("音频提交超时")
-            sleep(0.01)
-        response = future.result()
-        if response is None:
-            raise RuntimeError("音频播放服务没有返回结果")
-        if not response.accepted:
-            detail = response.message or response.error_code or "未知错误"
-            raise RuntimeError(f"音频播放服务拒绝：{detail}")
+        while monotonic() < deadline:
+            future = self._client.call_async(request)
+            while not future.done() and monotonic() < deadline:
+                sleep(0.01)
+            if not future.done():
+                break
+            response = future.result()
+            if response is None:
+                raise RuntimeError("音频播放服务没有返回结果")
+            if response.accepted:
+                return
+            if response.error_code != "player_busy":
+                detail = response.message or response.error_code or "未知错误"
+                raise RuntimeError(f"音频播放服务拒绝：{detail}")
+            sleep(0.05)
+        raise RuntimeError("音频提交超时：树莓派播放器持续忙碌")

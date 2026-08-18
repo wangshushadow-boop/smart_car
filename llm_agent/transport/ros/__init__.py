@@ -1,4 +1,4 @@
-"""统一 ROS 2 Action 传输层。
+"""统一 ROS 2 传输层。
 
 `run_agent_server.py` 把 `AgentGateway` 暴露为 `/car/agent/run`，并集中处理
 消息转换、接口名字契约和可选 tracing；`robot_tool_client.py` 只负责调用

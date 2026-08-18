@@ -1,4 +1,4 @@
-"""统一全模态 Agent ROS 2 Action Server 及其消息边界转换。"""
+"""统一全模态 Agent ROS 2 Service 及其消息边界转换。"""
 
 from __future__ import annotations
 
@@ -9,23 +9,19 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from threading import Event, Thread
 from typing import Iterator
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
-from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
-from small_car_interfaces.action import RunAgent
 from small_car_interfaces.msg import AgentContent as RosAgentContent
-from small_car_interfaces.msg import AgentProgress as RosAgentProgress
 from small_car_interfaces.msg import AgentResponse as RosAgentResponse
+from small_car_interfaces.srv import RunAgent
 
 from llm_agent.runtime.contracts import (
     ContentPart,
     ContentType,
-    RuntimeProgress,
     RuntimeRequest,
     RuntimeResponse,
 )
@@ -52,8 +48,8 @@ def _load_interface_name(section: str, key: str) -> str:
     return name
 
 
-def load_agent_action_name() -> str:
-    return _load_interface_name("actions", "agent_run")
+def load_agent_service_name() -> str:
+    return _load_interface_name("services", "agent_run")
 
 
 def load_robot_tool_action_name() -> str:
@@ -83,7 +79,7 @@ def request_from_ros(message, *, max_inline_bytes: int) -> RuntimeRequest:
         inputs=[_content_from_ros(part) for part in message.inputs],
         response_modalities=[ContentType(value) for value in message.response_modalities],
         allow_tools=message.allow_tools,
-        stream_progress=message.stream_progress,
+        stream_progress=False,
         metadata=_load_json_object(message.metadata_json),
     )
 
@@ -99,16 +95,6 @@ def response_to_ros(response: RuntimeResponse) -> RosAgentResponse:
     message.error_code = response.error_code
     message.error_message = response.error_message
     message.metadata_json = json.dumps(response.metadata, ensure_ascii=False)
-    return message
-
-
-def progress_to_ros(progress: RuntimeProgress) -> RosAgentProgress:
-    message = RosAgentProgress()
-    message.request_id = progress.request_id
-    message.stage = progress.stage
-    message.percent = progress.percent
-    message.message = progress.message
-    message.partial_outputs = [_content_to_ros(part) for part in progress.partial_outputs]
     return message
 
 
@@ -200,96 +186,53 @@ def ros_trace_scope(callback, name: str) -> Iterator[None]:
         library.ros_trace_callback_end(pointer)
 
 
-class AgentActionServer(Node):
-    """把唯一 ROS Action 接口桥接到纯 Python AgentGateway。"""
+class AgentServiceServer(Node):
+    """把短 DialogueLoop 暴露为唯一 ROS Service。"""
 
     def __init__(
         self,
         gateway,
-        action_name: str,
+        service_name: str,
         *,
         max_inline_bytes: int = 64 * 1024 * 1024,
     ) -> None:
         super().__init__("llm_agent_server")
         self._gateway = gateway
         self._max_inline_bytes = max_inline_bytes
-        # 使用可重入回调组：feedback publish 与 execute_callback 不会互相阻塞。
-        self._server = ActionServer(
-            self,
+        # 不同 Session 可以并发进入 Gateway；同 Session 仍由 Gateway 串行。
+        self._server = self.create_service(
             RunAgent,
-            action_name,
-            execute_callback=self._execute,
-            goal_callback=self._accept_goal,
-            cancel_callback=self._accept_cancel,
+            service_name,
+            self._handle,
             callback_group=ReentrantCallbackGroup(),
         )
-        self.get_logger().info(f"统一全模态 Agent Action：{action_name}")
+        self.get_logger().info(f"统一全模态 Agent Service：{service_name}")
 
-    def _accept_goal(self, goal_request) -> GoalResponse:
-        """先做一次轻量校验，把超容量的 Goal 直接拒掉，避免 Runtime 被拖垮。"""
-        with ros_trace_scope(self._accept_goal, "AgentActionServer._accept_goal"):
-            return self._accept_goal_traced(goal_request)
+    def _handle(self, service_request, service_response):
+        """完成一次短对话；后台 Skill 的生命周期不占用 Service。"""
+        with ros_trace_scope(self._handle, "AgentServiceServer._handle"):
+            return self._handle_traced(service_request, service_response)
 
-    def _accept_goal_traced(self, goal_request) -> GoalResponse:
+    def _handle_traced(self, service_request, service_response):
         try:
-            request_from_ros(
-                goal_request.request, max_inline_bytes=self._max_inline_bytes
+            request = request_from_ros(
+                service_request.request,
+                max_inline_bytes=self._max_inline_bytes,
             )
+            response = self._gateway.run(request)
         except Exception as error:
-            self.get_logger().warning(f"拒绝无效 Agent 请求：{error}")
-            return GoalResponse.REJECT
-        return GoalResponse.ACCEPT
-
-    def _accept_cancel(self, _goal_handle) -> CancelResponse:
-        """始终接受取消请求；具体的中断由 Runtime 内部令牌驱动。"""
-        with ros_trace_scope(self._accept_cancel, "AgentActionServer._accept_cancel"):
-            return CancelResponse.ACCEPT
-
-    def _execute(self, goal_handle):
-        """单 Goal 完整执行：转换 → Runtime → 反馈 → 取消监听。"""
-        with ros_trace_scope(self._execute, "AgentActionServer._execute"):
-            return self._execute_traced(goal_handle)
-
-    def _execute_traced(self, goal_handle):
-        request = request_from_ros(
-            goal_handle.request.request, max_inline_bytes=self._max_inline_bytes
-        )
-        cancel_token = Event()
-        monitor_done = Event()
-
-        def monitor_cancel() -> None:
-            # 模型 HTTP 调用本身可能不能立即中断，但工具和后续节点会观察该令牌。
-            while not monitor_done.wait(0.05):
-                if goal_handle.is_cancel_requested:
-                    cancel_token.set()
-                    return
-
-        # 守护线程：Runtime 退出时一并结束，无需手动清理。
-        monitor = Thread(target=monitor_cancel, daemon=True)
-        monitor.start()
-        try:
-            response = self._gateway.run(
-                request,
-                progress_callback=lambda progress: goal_handle.publish_feedback(
-                    RunAgent.Feedback(progress=progress_to_ros(progress))
-                ),
-                cancel_token=cancel_token,
+            request_id = getattr(service_request.request, "request_id", "")
+            response = RuntimeResponse(
+                request_id=request_id or "invalid-request",
+                status="failed",
+                error_code="invalid_request",
+                error_message=str(error),
             )
-        finally:
-            monitor_done.set()
-            monitor.join(timeout=0.2)
-
-        result = RunAgent.Result(response=response_to_ros(response))
-        # 根据 Runtime 状态决定 ROS Action 的最终结果分类。
-        if response.status == "cancelled":
-            goal_handle.canceled()
-        elif response.status == "failed":
-            goal_handle.abort()
-        else:
-            goal_handle.succeed()
-        return result
+            self.get_logger().warning(f"Agent Service 请求失败：{error}")
+        service_response.response = response_to_ros(response)
+        return service_response
 
     def destroy_node(self) -> bool:
-        """Node 销毁前先关闭 ActionServer，避免 ROS 资源泄漏。"""
-        self._server.destroy()
+        """Node 销毁前先关闭 Service，避免 ROS 资源泄漏。"""
+        self.destroy_service(self._server)
         return super().destroy_node()

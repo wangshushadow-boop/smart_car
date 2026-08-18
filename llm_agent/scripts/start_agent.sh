@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 启动统一全模态 ROS Action Server：ROS Action → Runtime → 模型。
+# 启动统一全模态 ROS Service Server：ROS Service → Runtime → 模型。
 set -eo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # 可选的本地密钥文件。它被 Git 忽略，只允许保存 KEY=value 形式的环境变量。

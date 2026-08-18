@@ -50,6 +50,10 @@ class ToolRegistry:
         """
         return list(self._tools.values())
 
+    def close(self) -> None:
+        """停止工具线程池；运行中的 Tool 通过上层取消令牌协作退出。"""
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
     def catalog_prompt(self, names: list[str] | None = None) -> str:
         """为通用任务节点输出白名单工具及其参数 JSON Schema。"""
         lines: list[str] = []

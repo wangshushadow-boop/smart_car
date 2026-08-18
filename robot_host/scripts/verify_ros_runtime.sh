@@ -33,6 +33,8 @@ timeout 10 ros2 interface show \
   fail "ExecuteRobotTool 接口未安装"
 timeout 10 ros2 interface show small_car_interfaces/srv/PlayAudio >/dev/null || \
   fail "PlayAudio 接口未安装"
+timeout 10 ros2 interface show small_car_interfaces/srv/RunAgent >/dev/null || \
+  fail "RunAgent 接口未安装"
 
 tool_action="$(timeout 10 ros2 action info /car/agent/tool_execute 2>/dev/null)" || \
   fail "无法读取 Robot Tool Action"

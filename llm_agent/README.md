@@ -225,7 +225,11 @@ llm_agent/
 ├── app/run_agent.py
 ├── gateway/gateway.py
 ├── runtime/
-│   ├── agent_loop.py
+│   ├── reactor.py
+│   ├── dialogue_loop.py
+│   ├── skill_runner.py
+│   ├── task_manager.py
+│   ├── runtime.py
 │   ├── prompt_builder.py
 │   └── contracts.py
 ├── sessions/store.py
@@ -255,14 +259,14 @@ llm_agent/
 
 不要把真实 API 密钥提交到 Git。后续启用鉴权时可使用本地 `.env` 文件，并把它加入 `.gitignore`。
 
-Agent 对外只有 `/car/agent/run` 一个 ROS 2 Action，Goal、Feedback 和 Result 统一支持文本、音频、
-图片、视频和 JSON 内容块。树莓派在设备侧完成 VAD 和相机关键帧聚合，再提交同一个 Action。
+Agent 对外通过 `/car/agent/run` ROS 2 Service 接收文本、音频、图片、视频和 JSON 内容块。
+Service 只等待 DialogueLoop 的短决策；长 Skill 交给 TaskManager 后台执行。
 
 调试页面已拆分到仓库顶层独立模块 `agent_debug_web/`。它与树莓派完全一样，只是 `/car/agent/run`
 的客户端，不导入 Runtime、模型、工具或 TTS。启动方法见
 [独立 Web Debug](../agent_debug_web/README.md)。
 
-当前 Agent Loop 支持闲聊、车辆状态查询、单步相对运动、组合运动 Skill、工具白名单校验和独立 TTS。
+当前 DialogueLoop 支持闲聊、任务控制和任务提交；SkillRunner 负责单步、组合及动态 ReAct Skill。
 所有车辆能力统一以 Skill 调用；原子 Tool 会自动映射为同名的单步骤 Skill，不需要重复注册或编写 YAML。
 `motion_sequence` 可以把 2～8 个明确运动步骤编排为任务序列；树莓派再次校验后通过 Nav2 串行执行。
 Agent Server 不直接发布速度或访问底盘，任意 ROS topic 发布也未开放。

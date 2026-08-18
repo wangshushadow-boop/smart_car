@@ -14,7 +14,7 @@
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <small_car_interfaces/srv/play_audio.hpp>
 
-#include "agent_client/agent_action_client.hpp"
+#include "agent_client/agent_service_client.hpp"
 #include "agent_client/camera_sampler.hpp"
 #include "agent_client/response_player.hpp"
 #include "agent_client/utterance_buffer.hpp"
@@ -34,9 +34,9 @@ class AgentClientNode : public rclcpp::Node {
   void ResetSpeechState();
   void FinishUtterance();
   void HandleResponse(const std::string& request_id,
-                      AgentActionClient::Response response);
-  void HandleActionFailure(const std::string& request_id,
-                           const std::string& message);
+                      AgentServiceClient::Response response);
+  void HandleServiceFailure(const std::string& request_id,
+                            const std::string& message);
   void HandlePlayAudio(
       const std::shared_ptr<small_car_interfaces::srv::PlayAudio::Request> request,
       std::shared_ptr<small_car_interfaces::srv::PlayAudio::Response> response);
@@ -52,7 +52,7 @@ class AgentClientNode : public rclcpp::Node {
   std::vector<std::uint8_t> idle_period_;
   CameraSampler camera_;
   std::unique_ptr<ResponsePlayer> player_;
-  std::unique_ptr<AgentActionClient> action_client_;
+  std::unique_ptr<AgentServiceClient> service_client_;
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr
       image_subscription_;
   rclcpp::Service<small_car_interfaces::srv::PlayAudio>::SharedPtr

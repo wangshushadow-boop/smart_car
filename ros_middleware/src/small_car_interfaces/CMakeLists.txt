@@ -9,9 +9,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AgentContent.msg"
   "msg/AgentRequest.msg"
   "msg/AgentResponse.msg"
-  "msg/AgentProgress.msg"
   "srv/PlayAudio.srv"
-  "action/RunAgent.action"
+  "srv/RunAgent.srv"
   "action/ExecuteRobotTool.action"
   DEPENDENCIES builtin_interfaces
 )

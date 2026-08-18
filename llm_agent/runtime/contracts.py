@@ -9,10 +9,57 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+TaskStatus = Literal[
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+    "preempted",
+]
+
+
+class AgentDecision(BaseModel):
+    """DialogueLoop 与 SkillRunner 共用的结构化 ReAct 决策。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["skill_call", "task_control", "final"]
+    skill_name: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    task_action: Literal["cancel"] | None = None
+    status: Literal["completed", "failed"] | None = None
+    answer: str = ""
+    reason: str = ""
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "AgentDecision":
+        if self.type == "skill_call" and not self.skill_name:
+            raise ValueError("skill_call 必须提供 skill_name")
+        if self.type == "task_control" and not self.task_action:
+            raise ValueError("task_control 必须提供 task_action")
+        if self.type == "final" and (not self.status or not self.answer.strip()):
+            raise ValueError("final 必须提供 status 和非空 answer")
+        return self
+
+
+class TaskSnapshot(BaseModel):
+    """暴露给 DialogueLoop 的只读后台任务摘要。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    session_id: str
+    skill_name: str
+    status: TaskStatus
+    answer: str = ""
+    error: str = ""
 
 
 class ContentType(str, Enum):

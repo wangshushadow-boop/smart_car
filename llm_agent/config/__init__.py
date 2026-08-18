@@ -2,7 +2,7 @@
 
 本模块定义 Agent 启动所需的全部配置模型（推理模型、输入输出模态、
 运行时容量控制），并负责把 YAML 文件和环境变量统一转换为强类型的
-`AgentConfig`。所有 Agent 入口（ROS Action Server、单元测试、命令行调试）
+`AgentConfig`。所有 Agent 入口（ROS Service Server、单元测试、命令行调试）
 都通过 `load_agent_config()` 拿到同一份配置。
 
 配置层级：
@@ -131,7 +131,7 @@ class RuntimeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # 单次请求内联媒体上限，防止 ROS Action Goal 携带过大文件拖垮总线。
+    # 单次请求内联媒体上限，防止 ROS Service 携带过大文件拖垮总线。
     max_inline_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
     # 是否启用 Skill 白名单；关闭后组合运动请求会直接降级为单步 Tool。
     skills_enabled: bool = True

@@ -10,18 +10,15 @@ Tool 均不导入 ROS 类型。
 和 `allow_tools`。`request_id` 用于幂等，`session_id` 用于上下文隔离和同会话
 串行。
 
-## Agent Loop 状态
+## 对话与后台任务状态
 
-统一 Agent Loop 的状态只存在于一次请求中：
+DialogueLoop 的状态只存在于一次短请求中；长 Skill 由 TaskManager 保存：
 
 ```text
 用户输入与媒体引用
-当前 RobotTask（可选）
-ToolBudget
-Skill/Tool execution_trace
-最近 Robot Observation
-取消令牌
-最终 answer / audio / error
+DialogueLoop：用户输入、当前任务快照、回答
+TaskManager：task_id、status、取消令牌
+SkillRunner：RobotTask、ToolBudget、execution_trace、最近 Observation
 ```
 
 模型不能直接修改预算或执行状态，只能返回一个经过强类型解析的
@@ -29,9 +26,7 @@ Skill/Tool execution_trace
 
 ## 持久化 Session
 
-SQLite 保存文字对话、Task Run 状态和结构化执行事件，不保存媒体二进制。
-AgentGateway 保证同一 Session 不并发执行，并对已完成 request_id 返回缓存响应。
+SQLite 保存文字对话和请求事件，不保存媒体二进制。TaskManager 的最新任务
+快照会进入下一轮 Prompt；AgentGateway 只串行化短对话轮次，不阻塞 SkillRunner。
 
-进度阶段包括 `queued`、`understanding`、`transcribing`、`agent_running`、
-`tool_running`、`synthesizing` 和 `completed`。调用端应按阶段名称展示，不应
-根据某个固定百分比推断动作已经成功。
+后台任务状态统一为 `queued/running/completed/failed/cancelled/preempted`。

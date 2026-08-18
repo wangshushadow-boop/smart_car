@@ -1,4 +1,4 @@
-"""Web Debug 使用的 ROS Action Client；本模块不依赖 llm_agent。"""
+"""Web Debug 使用的 ROS Service Client；本模块不依赖 llm_agent。"""
 
 from __future__ import annotations
 
@@ -8,13 +8,12 @@ from threading import Event, Thread
 from uuid import uuid4
 
 import rclpy
-from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from small_car_interfaces.action import RunAgent
 from small_car_interfaces.msg import AgentContent, AgentRequest
+from small_car_interfaces.srv import RunAgent
 
-from .interface_contract import load_agent_action_name
+from .interface_contract import load_agent_service_name
 
 
 _CONTENT_TYPES = {
@@ -32,27 +31,23 @@ class RosAgentClient:
     def __init__(self) -> None:
         rclpy.init()
         self._node = Node("agent_debug_web")
-        self._client = ActionClient(
-            self._node, RunAgent, load_agent_action_name()
-        )
+        self._client = self._node.create_client(RunAgent, load_agent_service_name())
         self._executor = MultiThreadedExecutor(num_threads=2)
         self._executor.add_node(self._node)
         self._thread = Thread(target=self._executor.spin, daemon=True)
         self._thread.start()
 
     def submit(self, payload: dict, timeout_seconds: float = 180) -> dict:
-        """把 Web JSON 转成统一 Goal，并等待对应的 Action Result。"""
-        if not self._client.wait_for_server(timeout_sec=5):
-            raise RuntimeError("Agent Action Server 不可用")
-        goal = RunAgent.Goal()
-        goal.request = self._build_request(payload)
-        goal_future = self._client.send_goal_async(goal)
-        goal_handle = self._wait_future(goal_future, timeout_seconds)
-        if not goal_handle.accepted:
-            raise ValueError("Agent 拒绝了请求，请检查输入格式或媒体大小")
-        result_future = goal_handle.get_result_async()
-        wrapped_result = self._wait_future(result_future, timeout_seconds)
-        return self._response_to_json(wrapped_result.result.response)
+        """把 Web JSON 转成统一 Service 请求，并等待短 DialogueLoop 响应。"""
+        if not self._client.wait_for_service(timeout_sec=5):
+            raise RuntimeError("Agent Service 不可用")
+        request = RunAgent.Request()
+        request.request = self._build_request(payload)
+        result = self._wait_future(
+            self._client.call_async(request),
+            timeout_seconds,
+        )
+        return self._response_to_json(result.response)
 
     def stop(self) -> None:
         self._executor.shutdown()
@@ -76,7 +71,6 @@ class RosAgentClient:
             raise ValueError("response_modalities 必须是非空数组")
         request.response_modalities = [str(value) for value in modalities]
         request.allow_tools = bool(payload.get("allow_tools", True))
-        request.stream_progress = True
         request.metadata_json = json.dumps(
             payload.get("metadata", {}), ensure_ascii=False
         )

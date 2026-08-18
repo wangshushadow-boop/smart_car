@@ -1,0 +1,5 @@
+# 一轮完整的多模态输入。Service 只执行短 DialogueLoop；长 Skill 在后台运行。
+small_car_interfaces/AgentRequest request
+---
+# 对话回答或后台任务受理结果，不等待 Skill 完成。
+small_car_interfaces/AgentResponse response

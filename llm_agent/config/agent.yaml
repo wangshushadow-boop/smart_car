@@ -40,7 +40,7 @@ modalities:
       failure: text_only
 
 runtime:
-  # 防止调用方把过大的媒体直接塞入 DDS Action Goal。
+  # 防止调用方把过大的媒体直接塞入 DDS Service 请求。
   max_inline_bytes: 67108864
   # Skill 只编排白名单 Tool；关闭后复合任务不会进入执行分支。
   skills_enabled: true
